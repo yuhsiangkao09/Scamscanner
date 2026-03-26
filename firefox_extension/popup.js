@@ -5,6 +5,8 @@ const statusLine = document.getElementById("statusLine");
 const urlLine = document.getElementById("urlLine");
 const metrics = document.getElementById("metrics");
 const details = document.getElementById("details");
+const fullCheckActions = document.getElementById("fullCheckActions");
+const fullCheckButton = document.getElementById("fullCheckButton");
 const actions = document.getElementById("actions");
 const riskValue = document.getElementById("riskValue");
 const scoreValue = document.getElementById("scoreValue");
@@ -52,6 +54,7 @@ function applyStaticText() {
   document.getElementById("marginLabelText").textContent = t(currentLanguage, "popupDetailThresholdMargin");
   document.getElementById("falsePositiveButton").textContent = t(currentLanguage, "popupActionFalsePositive");
   document.getElementById("reportButton").textContent = t(currentLanguage, "popupActionReport");
+  document.getElementById("fullCheckButton").textContent = t(currentLanguage, "bannerActionDetailedCheck");
   document.getElementById("optionsButton").textContent = t(currentLanguage, "popupSettings");
   document.getElementById("healthButton").textContent = t(currentLanguage, "popupPingApi");
   renderProtectionControls();
@@ -78,8 +81,10 @@ function renderReady(state) {
   const isHighRisk = summary.riskLevel === "HIGH";
   const isMarkedSafe = Boolean(state.decision?.markedSafe || state.feedback?.falsePositiveReportedAt);
   const isReportedPhishing = Boolean(state.feedback?.siteReportedAt);
+  const detailedCheck = state.detailedCheck || {};
   metrics.classList.remove("hidden");
   details.classList.remove("hidden");
+  fullCheckActions.classList.remove("hidden");
   falsePositiveButton.hidden = !isHighRisk;
   falsePositiveButton.disabled = false;
   falsePositiveButton.textContent = isMarkedSafe
@@ -93,6 +98,16 @@ function renderReady(state) {
     ? t(currentLanguage, "popupActionUndoReport")
     : t(currentLanguage, "popupActionReport");
   setActionVariant(reportButton, isReportedPhishing ? "undo" : "danger");
+  if (detailedCheck.status === "running") {
+    fullCheckButton.disabled = true;
+    fullCheckButton.textContent = t(currentLanguage, "bannerActionDetailedChecking");
+  } else if (detailedCheck.status === "complete") {
+    fullCheckButton.disabled = false;
+    fullCheckButton.textContent = t(currentLanguage, "bannerActionDetailedDone");
+  } else {
+    fullCheckButton.disabled = false;
+    fullCheckButton.textContent = t(currentLanguage, "bannerActionDetailedCheck");
+  }
   setStatus(
     isReportedPhishing
       ? t(currentLanguage, "popupStatusReported")
@@ -116,6 +131,7 @@ function renderWhitelisted(state) {
   currentState = state;
   metrics.classList.add("hidden");
   details.classList.add("hidden");
+  fullCheckActions.classList.add("hidden");
   actions.classList.add("hidden");
   setStatus(t(currentLanguage, "popupStatusWhitelisted"), state.url || "");
 }
@@ -124,6 +140,7 @@ function renderError(state) {
   currentState = state;
   metrics.classList.add("hidden");
   details.classList.add("hidden");
+  fullCheckActions.classList.add("hidden");
   actions.classList.add("hidden");
   setStatus(state.error || t(currentLanguage, "popupStatusUnhealthy", { error: "unknown error" }), state.url || "");
 }
@@ -132,6 +149,7 @@ function renderScanning(url) {
   currentState = null;
   metrics.classList.add("hidden");
   details.classList.add("hidden");
+  fullCheckActions.classList.add("hidden");
   actions.classList.add("hidden");
   setStatus(t(currentLanguage, "popupStatusScanning"), url);
 }
@@ -147,6 +165,7 @@ async function refreshState() {
     currentState = null;
     metrics.classList.add("hidden");
     details.classList.add("hidden");
+    fullCheckActions.classList.add("hidden");
     actions.classList.add("hidden");
     setStatus(t(currentLanguage, "popupCantScan"), activeTab?.url || "");
     return;
@@ -156,6 +175,7 @@ async function refreshState() {
     currentState = null;
     metrics.classList.add("hidden");
     details.classList.add("hidden");
+    fullCheckActions.classList.add("hidden");
     actions.classList.add("hidden");
     setStatus(t(currentLanguage, "popupStatusProtectionDisabled"), activeTab.url);
     return;
@@ -226,6 +246,16 @@ protectionToggleButton.addEventListener("click", async () => {
 
 document.getElementById("optionsButton").addEventListener("click", () => {
   api.runtime.openOptionsPage();
+});
+
+fullCheckButton.addEventListener("click", async () => {
+  if (!activeTab?.id || !protectionEnabled) {
+    return;
+  }
+  await api.tabs.sendMessage(activeTab.id, {
+    type: "surfphish:show-full-check-consent"
+  }).catch(() => {});
+  window.close();
 });
 
 document.getElementById("falsePositiveButton").addEventListener("click", async () => {

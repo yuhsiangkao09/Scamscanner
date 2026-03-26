@@ -29,7 +29,8 @@ app = FastAPI(title="RealFake", description="Layer 2 phishing detection API")
 
 class AnalyzeRequest(BaseModel):
     url: str
-    screenshot: str | None = None  # base64-encoded PNG
+    screenshot: str | None = None  # base64-encoded image payload
+    screenshot_format: str | None = None
 
 
 class Signal(BaseModel):
@@ -74,8 +75,10 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     try:
         if req.screenshot:
             image_bytes = base64.b64decode(req.screenshot)
+            image_format = str(req.screenshot_format or "png").strip().lower()
         else:
             image_bytes = take_screenshot(url)
+            image_format = "png"
     except Exception as e:
         logger.error(f"Screenshot failed for {url}: {e}")
         raise HTTPException(status_code=502, detail={
@@ -92,7 +95,7 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     # 3. Call VLM
     user_prompt = build_user_prompt(url, page_data, html_signals, url_intel)
     try:
-        raw = call_bedrock(SYSTEM_PROMPT, user_prompt, image_bytes)
+        raw = call_bedrock(SYSTEM_PROMPT, user_prompt, image_bytes, image_format=image_format)
     except Exception as e:
         logger.error(f"Bedrock call failed for {url}: {e}")
         raise HTTPException(status_code=502, detail={

@@ -902,6 +902,12 @@ function restoreExtensionUiAfterCapture() {
 }
 
 api.runtime.onMessage.addListener((message) => {
+  if (message?.type === "surfphish:show-full-check-consent") {
+    ensureUi();
+    applyStaticText();
+    showConsentOverlay("");
+    return Promise.resolve({ ok: true });
+  }
   if (message?.type === "surfphish:collect-page-payload") {
     return buildCompressedPagePayload();
   }

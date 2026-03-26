@@ -339,6 +339,7 @@ async def handle_scan(request: Request):
                     service.analyze_full_check,
                     url=source_url or request_url or url or "unknown",
                     image_bytes=screenshot_payload["image_bytes"],
+                    image_format=screenshot_payload["image_format"],
                 )
                 if full_check_analysis is not None:
                     result["full_check_analysis"] = full_check_analysis

@@ -595,6 +595,8 @@ async function captureFullPageScreenshot(tabId) {
     if (!context) {
       throw new Error("Canvas stitching context could not be created.");
     }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
 
     const xPositions = buildCapturePositions(totalWidth, viewportWidth);
     const yPositions = buildCapturePositions(totalHeight, viewportHeight);
@@ -638,11 +640,11 @@ async function captureFullPageScreenshot(tabId) {
     // const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
     // const image = await loadImage(dataUrl);
 
-    const dataUrl = canvas.toDataURL("image/png");
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
     const [, imageBase64 = ""] = dataUrl.split(",", 2);
     return {
       screenshotPngBase64: imageBase64,
-      screenshotFormat: "png",
+      screenshotFormat: "jpeg",
       screenshotWidth: canvas.width,
       screenshotHeight: canvas.height,
       screenshotScale: scale,

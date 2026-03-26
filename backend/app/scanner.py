@@ -377,10 +377,11 @@ class ScannerService:
             "realfake_timeout": self.realfake.timeout,
         }
 
-    def analyze_full_check(self, *, url: str, image_bytes: bytes):
+    def analyze_full_check(self, *, url: str, image_bytes: bytes, image_format: str = "png"):
         return self.realfake.analyze(
             url=url,
             image_bytes=image_bytes,
+            image_format=image_format,
         )
 
     def save_feedback_html(self, url, html_content, prefix="feedback"):

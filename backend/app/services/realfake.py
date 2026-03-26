@@ -11,7 +11,7 @@ class RealFakeService:
         self.api_base_url = str(api_base_url or "").strip().rstrip("/")
         self.timeout = max(1, int(timeout))
 
-    def analyze(self, *, url: str, image_bytes: bytes) -> dict | None:
+    def analyze(self, *, url: str, image_bytes: bytes, image_format: str = "png") -> dict | None:
         if not self.enabled:
             return None
 
@@ -26,6 +26,7 @@ class RealFakeService:
             json={
                 "url": url,
                 "screenshot": base64.b64encode(image_bytes).decode("ascii"),
+                "screenshot_format": str(image_format or "png").lower(),
             },
             timeout=self.timeout,
         )

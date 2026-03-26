@@ -60,16 +60,24 @@ def load_screenshot(path: str) -> bytes:
 # Bedrock call
 # ---------------------------------------------------------------------------
 
-def call_bedrock(system: str, user_text: str, image_bytes: bytes | None = None) -> str:
+def call_bedrock(
+    system: str,
+    user_text: str,
+    image_bytes: bytes | None = None,
+    image_format: str = "png",
+) -> str:
     """Call Kimi K2.5 via Bedrock Converse API. Returns raw text response."""
     client = boto3.client("bedrock-runtime", region_name=REGION)
 
     # Build user content blocks
     user_content = []
     if image_bytes:
+        normalized_format = str(image_format or "png").strip().lower()
+        if normalized_format == "jpg":
+            normalized_format = "jpeg"
         user_content.append({
             "image": {
-                "format": "png",
+                "format": normalized_format,
                 "source": {"bytes": image_bytes},
             }
         })
