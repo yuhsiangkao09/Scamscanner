@@ -535,6 +535,35 @@ class ScannerService:
             image_format=image_format,
         )
 
+    def analyze_email_check(
+        self,
+        *,
+        provider: str,
+        page_url: str,
+        sender_name: str,
+        sender_email: str,
+        subject: str,
+        body_text: str,
+        links: list[dict],
+        attachments: list[str],
+        warnings: list[str],
+        image_bytes: bytes | None,
+        image_format: str = "jpeg",
+    ):
+        return self.realfake.analyze_email(
+            provider=provider,
+            page_url=page_url,
+            sender_name=sender_name,
+            sender_email=sender_email,
+            subject=subject,
+            body_text=body_text,
+            links=links,
+            attachments=attachments,
+            warnings=warnings,
+            image_bytes=image_bytes,
+            image_format=image_format,
+        )
+
     def save_feedback_html(self, url, html_content, prefix="feedback"):
         host = urlparse(url).netloc.lower() or "report"
         safe_host = "".join(

@@ -698,6 +698,29 @@ async function sendScanRequest(pagePayload, extra = {}) {
   });
 }
 
+async function sendEmailScanRequest(emailPayload, extra = {}) {
+  return fetch(`${settings.apiBaseUrl}/api/scan/email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      provider: emailPayload.provider || "gmail",
+      page_url: emailPayload.pageUrl,
+      sender_name: emailPayload.senderName || "",
+      sender_email: emailPayload.senderEmail || "",
+      subject: emailPayload.subject || "",
+      body_text: emailPayload.bodyText || "",
+      links: Array.isArray(emailPayload.links) ? emailPayload.links : [],
+      attachments: Array.isArray(emailPayload.attachments) ? emailPayload.attachments : [],
+      warnings: Array.isArray(emailPayload.warnings) ? emailPayload.warnings : [],
+      page_context: emailPayload.pageContext || null,
+      debug: false,
+      ...extra
+    })
+  });
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -842,6 +865,67 @@ async function captureFullPageScreenshot(tabId) {
   }
 }
 
+async function captureElementScreenshot(tabId, captureRect) {
+  const tab = await api.tabs.get(tabId);
+  await api.tabs.sendMessage(tabId, {
+    type: "surfphish:prepare-email-capture"
+  }).catch(() => {});
+
+  try {
+    const tileDataUrl = await captureVisibleTabWithRetry(tabId, tab.windowId);
+    const image = await loadImage(tileDataUrl);
+    const viewportWidth = Math.max(Number(captureRect?.viewportWidth || 0), 1);
+    const viewportHeight = Math.max(Number(captureRect?.viewportHeight || 0), 1);
+    const x = Math.max(0, Number(captureRect?.x || 0));
+    const y = Math.max(0, Number(captureRect?.y || 0));
+    const width = Math.max(1, Math.min(Number(captureRect?.width || 0), viewportWidth - x || viewportWidth));
+    const height = Math.max(1, Math.min(Number(captureRect?.height || 0), viewportHeight - y || viewportHeight));
+    const scaleX = image.naturalWidth / viewportWidth;
+    const scaleY = image.naturalHeight / viewportHeight;
+
+    const sourceX = Math.max(0, Math.round(x * scaleX));
+    const sourceY = Math.max(0, Math.round(y * scaleY));
+    const sourceWidth = Math.max(1, Math.round(width * scaleX));
+    const sourceHeight = Math.max(1, Math.round(height * scaleY));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = sourceWidth;
+    canvas.height = sourceHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Canvas context could not be created for email capture.");
+    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      sourceWidth,
+      sourceHeight
+    );
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const [, imageBase64 = ""] = dataUrl.split(",", 2);
+    return {
+      screenshotPngBase64: imageBase64,
+      screenshotFormat: "jpeg",
+      screenshotWidth: canvas.width,
+      screenshotHeight: canvas.height,
+      screenshotScale: Number(captureRect?.devicePixelRatio || 1),
+      screenshotCaptureMode: "gmail-message-crop"
+    };
+  } finally {
+    await api.tabs.sendMessage(tabId, {
+      type: "surfphish:restore-email-capture"
+    }).catch(() => {});
+  }
+}
+
 async function performDetailedCheck(tabId, allowNow = false) {
   const tab = await api.tabs.get(tabId);
   const url = tab?.url || "";
@@ -948,6 +1032,60 @@ async function performDetailedCheck(tabId, allowNow = false) {
     };
     await setTabState(tabId, failedState);
     return { ok: false, error: errorMessage, state: failedState };
+  }
+}
+
+async function performEmailCheck(tabId, allowNow = false) {
+  const tab = await api.tabs.get(tabId);
+  const url = tab?.url || "";
+  if (!isScannableUrl(url) || !/mail\.google\.com$/i.test(new URL(url).hostname)) {
+    return { ok: false, error: "This tab is not an open Gmail message." };
+  }
+  if (!isProtectionEnabled()) {
+    return { ok: false, error: "SurfPhish protection is not enabled for this browser session." };
+  }
+  if (!allowNow) {
+    return { ok: false, requiresConsent: true };
+  }
+
+  try {
+    const emailPayload = await withTimeout(
+      api.tabs.sendMessage(tabId, {
+        type: "surfphish:collect-email-payload"
+      }),
+      5000,
+      "Timed out while collecting the current email."
+    );
+
+    if (!emailPayload?.pageUrl || (!emailPayload?.subject && !emailPayload?.bodyText)) {
+      throw new Error("The current Gmail message could not be read.");
+    }
+
+    const screenshotPayload = emailPayload.captureRect
+      ? await captureElementScreenshot(tabId, emailPayload.captureRect)
+      : null;
+    const response = await sendEmailScanRequest(emailPayload, {
+      screenshot_png_base64: screenshotPayload?.screenshotPngBase64 || null,
+      screenshot_format: screenshotPayload?.screenshotFormat || null,
+      screenshot_width: screenshotPayload?.screenshotWidth || null,
+      screenshot_height: screenshotPayload?.screenshotHeight || null,
+      screenshot_scale: screenshotPayload?.screenshotScale || null,
+      screenshot_capture_mode: screenshotPayload?.screenshotCaptureMode || null
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.result) {
+      throw new Error(payload.error || `Email analysis API failed with ${response.status}`);
+    }
+    return {
+      ok: true,
+      result: payload.result,
+      timings: payload.timings || {}
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error.message || "Email analysis failed."
+    };
   }
 }
 
@@ -1274,6 +1412,14 @@ api.runtime.onMessage.addListener((message, sender) => {
       return Promise.resolve({ ok: false, error: "No active tab available." });
     }
     return performDetailedCheck(tabId, Boolean(message.allowNow));
+  }
+
+  if (message.type === "surfphish:request-email-check") {
+    const tabId = sender.tab?.id ?? message.tabId;
+    if (!tabId) {
+      return Promise.resolve({ ok: false, error: "No active tab available." });
+    }
+    return performEmailCheck(tabId, Boolean(message.allowNow));
   }
 
   if (message.type === "surfphish:set-protection-enabled") {

@@ -464,6 +464,175 @@ async def handle_scan(request: Request):
         )
 
 
+@router.post("/api/scan/email")
+async def handle_scan_email(request: Request):
+    service = _scanner_service(request)
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    provider = str(payload.get("provider", "gmail") or "gmail").strip().lower()
+    page_url = str(payload.get("page_url", "")).strip()
+    sender_name = compact_text(str(payload.get("sender_name", "")).strip(), 240)
+    sender_email = compact_text(str(payload.get("sender_email", "")).strip(), 240)
+    subject = compact_text(str(payload.get("subject", "")).strip(), 400)
+    body_text = compact_text(str(payload.get("body_text", "")).strip(), 8000)
+    warnings = [
+        compact_text(str(item).strip(), 300)
+        for item in (payload.get("warnings") or [])
+        if str(item).strip()
+    ][:20]
+    attachments = [
+        compact_text(str(item).strip(), 240)
+        for item in (payload.get("attachments") or [])
+        if str(item).strip()
+    ][:20]
+    links = []
+    for item in payload.get("links") or []:
+        if not isinstance(item, dict):
+            continue
+        href = compact_text(str(item.get("href", "")).strip(), 500)
+        if not href:
+            continue
+        links.append({
+            "text": compact_text(str(item.get("text", "")).strip(), 200),
+            "href": href,
+        })
+        if len(links) >= 30:
+            break
+
+    if not page_url:
+        return JSONResponse(
+            {"error": "Missing page_url"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    if not subject and not body_text:
+        return JSONResponse(
+            {"error": "Missing email subject and body_text"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        screenshot_payload = decode_submitted_screenshot(payload)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Invalid screenshot payload: {exc}"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    page_context = payload.get("page_context")
+    service.log_received_payload(
+        input_mode="email_message",
+        request_url=page_url,
+        source_url=page_url,
+        html_content=body_text,
+        payload=payload,
+        debug=False,
+        insecure=False,
+        timeout=service.realfake.timeout,
+    )
+
+    timings = {}
+    started = time.perf_counter()
+    try:
+        result = {
+            "detail_level": "email_check",
+            "provider": provider,
+            "page_url": page_url,
+            "sender_name": sender_name,
+            "sender_email": sender_email,
+            "subject": subject,
+        }
+
+        if screenshot_payload:
+            screenshot_artifact = await asyncio.to_thread(
+                service.save_scan_screenshot,
+                page_url,
+                screenshot_payload["image_bytes"],
+                screenshot_payload["image_format"],
+                "email",
+            )
+            result["artifacts"] = {
+                "message_screenshot": {
+                    "stored_path": screenshot_artifact["stored_path"],
+                    "base64_path": screenshot_artifact["base64_path"],
+                    "base64_chars": screenshot_artifact["base64_chars"],
+                    "format": screenshot_payload["image_format"],
+                    "width": screenshot_payload["width"],
+                    "height": screenshot_payload["height"],
+                    "capture_mode": screenshot_payload["capture_mode"],
+                    "scale": screenshot_payload["scale"],
+                }
+            }
+
+        analyze_started = time.perf_counter()
+        try:
+            analysis = await asyncio.to_thread(
+                service.analyze_email_check,
+                provider=provider,
+                page_url=page_url,
+                sender_name=sender_name,
+                sender_email=sender_email,
+                subject=subject,
+                body_text=body_text,
+                links=links,
+                attachments=attachments,
+                warnings=warnings,
+                image_bytes=None if not screenshot_payload else screenshot_payload["image_bytes"],
+                image_format="jpeg" if not screenshot_payload else screenshot_payload["image_format"],
+            )
+            if analysis is not None:
+                result["full_check_analysis"] = analysis
+        except Exception as exc:
+            result["full_check_analysis_error"] = {
+                "type": exc.__class__.__name__,
+                "message": str(exc),
+            }
+        finally:
+            timings["full_check_analysis_ms"] = (time.perf_counter() - analyze_started) * 1000.0
+
+        if page_context is not None:
+            result["page_context"] = page_context
+
+        timings["total_ms"] = (time.perf_counter() - started) * 1000.0
+        await service.append_event_log(
+            service.build_event_record(
+                url=page_url,
+                input_mode="email_message",
+                debug=False,
+                insecure=False,
+                timeout=service.realfake.timeout,
+                status="success",
+                result=result,
+                timings=timings,
+            )
+        )
+        return {"result": result, "timings": timings}
+    except Exception as exc:
+        await service.append_event_log(
+            service.build_event_record(
+                url=page_url,
+                input_mode="email_message",
+                debug=False,
+                insecure=False,
+                timeout=service.realfake.timeout,
+                status="error",
+                error={
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                },
+            )
+        )
+        return JSONResponse(
+            {"error": str(exc)},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
 @router.post("/api/scan/fetch-url")
 async def handle_scan_fetch_url(request: Request):
     service = _scanner_service(request)

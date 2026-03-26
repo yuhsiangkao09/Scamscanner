@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from analyze import call_bedrock, parse_vlm_response, take_screenshot
+from email_prompt import EMAIL_SYSTEM_PROMPT, build_email_user_prompt
 from generate_prompt import (
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -65,6 +66,46 @@ class ErrorResponse(BaseModel):
     error: str
     stage: str
     detail: str | None = None
+
+
+class EmailLink(BaseModel):
+    text: str | None = None
+    href: str
+
+
+class AnalyzeEmailRequest(BaseModel):
+    provider: str = "gmail"
+    page_url: str
+    sender_name: str | None = None
+    sender_email: str | None = None
+    subject: str | None = None
+    body_text: str | None = None
+    links: list[EmailLink] = []
+    attachments: list[str] = []
+    warnings: list[str] = []
+    screenshot: str | None = None
+    screenshot_format: str | None = None
+
+
+class EmailCollectedEvidence(BaseModel):
+    provider: str
+    page_url: str
+    sender_name: str | None = None
+    sender_email: str | None = None
+    subject: str | None = None
+    links: list[EmailLink]
+    attachments: list[str]
+    warnings: list[str]
+
+
+class AnalyzeEmailResponse(BaseModel):
+    is_phishing: bool
+    risk_level: str
+    confidence: float
+    summary: str
+    signals: list[Signal]
+    action: str
+    collected_evidence: EmailCollectedEvidence
 
 
 @app.post("/analyze", responses={500: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
@@ -124,4 +165,71 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
         "iframes": html_signals.get("iframes", []),
     }
 
+    return result
+
+
+@app.post("/analyze-email", responses={500: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
+def analyze_email(req: AnalyzeEmailRequest) -> AnalyzeEmailResponse:
+    if req.screenshot:
+        try:
+            image_bytes = base64.b64decode(req.screenshot)
+            image_format = str(req.screenshot_format or "jpeg").strip().lower()
+        except Exception as e:
+            logger.error(f"Email screenshot decode failed for {req.page_url}: {e}")
+            raise HTTPException(status_code=502, detail={
+                "error": "Email screenshot decode failed",
+                "stage": "screenshot",
+                "detail": str(e),
+            })
+    else:
+        image_bytes = None
+        image_format = "jpeg"
+
+    user_prompt = build_email_user_prompt(
+        provider=req.provider,
+        page_url=req.page_url,
+        sender_name=req.sender_name or "",
+        sender_email=req.sender_email or "",
+        subject=req.subject or "",
+        body_text=req.body_text or "",
+        links=[link.model_dump() for link in req.links],
+        attachments=req.attachments,
+        warnings=req.warnings,
+    )
+
+    try:
+        raw = call_bedrock(
+            EMAIL_SYSTEM_PROMPT,
+            user_prompt,
+            image_bytes,
+            image_format=image_format,
+        )
+    except Exception as e:
+        logger.error(f"Bedrock email call failed for {req.page_url}: {e}")
+        raise HTTPException(status_code=502, detail={
+            "error": "Email model call failed",
+            "stage": "bedrock",
+            "detail": str(e),
+        })
+
+    try:
+        result = parse_vlm_response(raw)
+    except json.JSONDecodeError:
+        logger.error(f"Email VLM returned invalid JSON for {req.page_url}: {raw[:200]}")
+        raise HTTPException(status_code=502, detail={
+            "error": "Email model returned invalid JSON",
+            "stage": "parse",
+            "detail": raw[:500],
+        })
+
+    result["collected_evidence"] = {
+        "provider": req.provider,
+        "page_url": req.page_url,
+        "sender_name": req.sender_name,
+        "sender_email": req.sender_email,
+        "subject": req.subject,
+        "links": [link.model_dump() for link in req.links],
+        "attachments": req.attachments,
+        "warnings": req.warnings,
+    }
     return result

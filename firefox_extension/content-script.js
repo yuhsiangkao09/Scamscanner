@@ -6,6 +6,12 @@ let shadow;
 let currentState = null;
 let captureUiState = null;
 let bannerAutoHideTimer = null;
+let consentMode = "page";
+let emailCheckState = {
+  status: "idle",
+  error: "",
+  result: null
+};
 const HIGH_RISK_BANNER_AUTOHIDE_MS = 10000;
 let currentDisplayOptions = {
     showBanner: true,
@@ -70,6 +76,61 @@ function ensureUi() {
         top: 16px;
         right: 16px;
         pointer-events: auto;
+      }
+      .gmail-shell {
+        position: fixed;
+        right: 16px;
+        bottom: 20px;
+        width: min(340px, calc(100vw - 24px));
+        pointer-events: auto;
+      }
+      .gmail-panel {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 118, 110, 0.24);
+        background: linear-gradient(180deg, rgba(240, 253, 250, 0.98), rgba(236, 253, 245, 0.98));
+        box-shadow: 0 18px 42px rgba(15, 118, 110, 0.16);
+      }
+      .gmail-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ps-success);
+      }
+      .gmail-label::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: currentColor;
+        box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.14);
+      }
+      .gmail-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.25;
+        color: #0f3f3d;
+      }
+      .gmail-helper {
+        margin: 0;
+        color: #0f766e;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      .gmail-check-button {
+        background: linear-gradient(135deg, #0f766e, #34d399);
+        color: #f4fffb;
+        box-shadow: 0 16px 32px rgba(15, 118, 110, 0.22);
+      }
+      .gmail-check-button:disabled {
+        opacity: 0.7;
       }
       .card {
         width: 320px;
@@ -449,6 +510,14 @@ function ensureUi() {
         </div>
       </section>
     </div>
+    <div class="gmail-shell hidden" id="gmailShell">
+      <section class="gmail-panel">
+        <span class="gmail-label" id="gmailLabel">Gmail Email Check</span>
+        <h2 class="gmail-title" id="gmailTitle">Check the open email with SurfPhish</h2>
+        <p class="gmail-helper" id="gmailHelper">Analyze only the email currently open in Gmail, including the visible message view.</p>
+        <button class="primary-action gmail-check-button" id="gmailCheckButton" type="button">Check this email</button>
+      </section>
+    </div>
     <section class="overlay hidden" id="consentOverlay" aria-live="assertive">
       <article class="dialog">
         <h2 id="consentTitle">Full Check</h2>
@@ -504,7 +573,10 @@ function ensureUi() {
     hideBanner();
   });
   shadow.getElementById("detailButton").addEventListener("click", () => {
-    showConsentOverlay("");
+    showConsentOverlay("", "page");
+  });
+  shadow.getElementById("gmailCheckButton").addEventListener("click", () => {
+    showConsentOverlay("", "email");
   });
   shadow.getElementById("cancelConsentButton").addEventListener("click", () => {
     hideConsentOverlay();
@@ -523,6 +595,10 @@ function ensureUi() {
     hideFullCheckResults();
   });
   shadow.getElementById("allowConsentButton").addEventListener("click", () => {
+    if (consentMode === "email") {
+      requestEmailCheck(true);
+      return;
+    }
     requestDetailedCheck(true);
   });
   document.documentElement.appendChild(root);
@@ -535,10 +611,10 @@ function applyStaticText() {
   shadow.getElementById("errorLabelText").textContent = t(lang, "bannerMetricError");
   shadow.getElementById("thresholdLabelText").textContent = t(lang, "bannerMetricThreshold");
   shadow.getElementById("detailHelper").textContent = t(lang, "bannerDetailedHelper");
-  shadow.getElementById("consentTitle").textContent = t(lang, "consentTitle");
-  shadow.getElementById("consentBody").textContent = t(lang, "consentBody");
-  shadow.getElementById("allowConsentButton").textContent = t(lang, "consentAllow");
-  shadow.getElementById("cancelConsentButton").textContent = t(lang, "consentCancel");
+  shadow.getElementById("gmailLabel").textContent = t(lang, "emailCheckLabel");
+  shadow.getElementById("gmailTitle").textContent = t(lang, "emailCheckTitle");
+  shadow.getElementById("gmailHelper").textContent = t(lang, "emailCheckHelper");
+  setConsentMode(consentMode);
   shadow.getElementById("resultTitle").textContent = t(lang, "fullCheckResultTitle");
   shadow.getElementById("resultIntro").textContent = t(lang, "fullCheckResultIntro");
   shadow.getElementById("resultRiskLabel").textContent = t(lang, "fullCheckResultRisk");
@@ -578,7 +654,18 @@ function scheduleBannerAutoHide(state) {
   }, HIGH_RISK_BANNER_AUTOHIDE_MS);
 }
 
-function showConsentOverlay(message = "") {
+function setConsentMode(mode = "page") {
+  consentMode = mode === "email" ? "email" : "page";
+  const lang = currentLanguage();
+  const prefix = consentMode === "email" ? "emailConsent" : "consent";
+  shadow.getElementById("consentTitle").textContent = t(lang, `${prefix}Title`);
+  shadow.getElementById("consentBody").textContent = t(lang, `${prefix}Body`);
+  shadow.getElementById("allowConsentButton").textContent = t(lang, `${prefix}Allow`);
+  shadow.getElementById("cancelConsentButton").textContent = t(lang, `${prefix}Cancel`);
+}
+
+function showConsentOverlay(message = "", mode = consentMode) {
+  setConsentMode(mode);
   shadow.getElementById("consentStatus").textContent = message;
   shadow.getElementById("consentOverlay").classList.remove("hidden");
 }
@@ -589,9 +676,10 @@ function hideConsentOverlay() {
   shadow.getElementById("consentStatus").classList.remove("busy");
   shadow.getElementById("allowConsentButton").disabled = false;
   shadow.getElementById("cancelConsentButton").disabled = false;
+  setConsentMode("page");
 }
 
-function showFullCheckResults(analysis, errorMessage = "") {
+function showFullCheckResults(analysis, errorMessage = "", options = {}) {
   const lang = currentLanguage();
   const errorText = shadow.getElementById("resultErrorText");
   const summaryGrid = shadow.getElementById("resultSummaryGrid");
@@ -599,6 +687,15 @@ function showFullCheckResults(analysis, errorMessage = "") {
   const actionSection = shadow.getElementById("resultActionSection");
   const signalsSection = shadow.getElementById("resultSignalsSection");
   const signalsList = shadow.getElementById("resultSignalsList");
+  const leaveButton = shadow.getElementById("leaveResultActionButton");
+  const titleKey = options.titleKey || "fullCheckResultTitle";
+  const introKey = options.introKey || "fullCheckResultIntro";
+  const leaveKey = options.leaveKey || "fullCheckResultLeave";
+
+  shadow.getElementById("resultTitle").textContent = t(lang, titleKey);
+  shadow.getElementById("resultIntro").textContent = t(lang, introKey);
+  leaveButton.textContent = t(lang, leaveKey);
+  leaveButton.classList.toggle("hidden", Boolean(options.hideLeaveAction));
 
   signalsList.innerHTML = "";
   errorText.textContent = "";
@@ -656,6 +753,283 @@ function hideFullCheckResults() {
   shadow.getElementById("resultOverlay").classList.add("hidden");
 }
 
+function normalizeWhitespace(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isGmailPage() {
+  return window.location.hostname === "mail.google.com";
+}
+
+function isElementVisible(element) {
+  if (!(element instanceof Element)) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity || "1") === 0) {
+    return false;
+  }
+  return rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
+}
+
+function getVisibleTextLength(element) {
+  return normalizeWhitespace(element?.innerText || element?.textContent || "").length;
+}
+
+function findFirstVisible(selectors, scope = document) {
+  for (const selector of selectors) {
+    const match = Array.from(scope.querySelectorAll(selector)).find((element) => isElementVisible(element));
+    if (match) {
+      return match;
+    }
+  }
+  return null;
+}
+
+function pickLargestVisible(selectors, scope = document) {
+  let best = null;
+  let bestScore = -1;
+  for (const selector of selectors) {
+    for (const element of scope.querySelectorAll(selector)) {
+      if (!isElementVisible(element)) {
+        continue;
+      }
+      const score = getVisibleTextLength(element);
+      if (score > bestScore) {
+        best = element;
+        bestScore = score;
+      }
+    }
+  }
+  return best;
+}
+
+function findGmailBodyElement() {
+  return pickLargestVisible([
+    "div.a3s.aiL",
+    "div.a3s",
+    "div.ii.gt",
+    "div[data-message-id] div.a3s",
+    "div[role='main'] div.a3s"
+  ]);
+}
+
+function findGmailSubjectElement() {
+  return findFirstVisible([
+    "h2[data-thread-perm-id]",
+    "h2.hP",
+    "div[role='main'] h2"
+  ]);
+}
+
+function findGmailMessageContainer(bodyElement) {
+  if (!bodyElement) {
+    return null;
+  }
+  return (
+    bodyElement.closest("div[data-message-id]")
+    || bodyElement.closest("div.adn")
+    || bodyElement.closest("div[role='listitem']")
+    || bodyElement.closest("div[role='main']")
+    || bodyElement.parentElement
+    || document.body
+  );
+}
+
+function findGmailSenderElement(scope = document) {
+  return findFirstVisible([
+    ".gD[email]",
+    "span[email][name]",
+    "span[email]",
+    "[data-hovercard-id][email]"
+  ], scope);
+}
+
+function extractSenderInfo(scope = document) {
+  const senderElement = findGmailSenderElement(scope) || findGmailSenderElement(document);
+  if (!senderElement) {
+    return { name: "", email: "", element: null };
+  }
+  return {
+    name: normalizeWhitespace(
+      senderElement.getAttribute("name")
+      || senderElement.getAttribute("data-name")
+      || senderElement.textContent
+    ),
+    email: normalizeWhitespace(
+      senderElement.getAttribute("email")
+      || senderElement.getAttribute("data-hovercard-id")
+      || ""
+    ),
+    element: senderElement
+  };
+}
+
+function extractGmailWarnings(scope = document) {
+  const warnings = new Set();
+  for (const selector of ["[role='alert']", ".aT", ".qh", ".qj", ".ajy"]) {
+    for (const element of scope.querySelectorAll(selector)) {
+      if (!isElementVisible(element)) {
+        continue;
+      }
+      const text = normalizeWhitespace(element.innerText || element.textContent || "");
+      if (text && text.length > 8) {
+        warnings.add(text.slice(0, 500));
+      }
+    }
+  }
+  return Array.from(warnings).slice(0, 10);
+}
+
+function extractGmailAttachments(scope = document) {
+  const attachments = new Set();
+  for (const element of scope.querySelectorAll("[download_url], [data-tooltip*='Download'], div[command*='view=att']")) {
+    if (!isElementVisible(element)) {
+      continue;
+    }
+    const text = normalizeWhitespace(
+      element.getAttribute("download_url")
+      || element.getAttribute("aria-label")
+      || element.innerText
+      || element.textContent
+      || ""
+    );
+    if (text) {
+      attachments.add(text.slice(0, 240));
+    }
+  }
+  return Array.from(attachments).slice(0, 20);
+}
+
+function extractEmailLinks(bodyElement) {
+  const links = [];
+  const seen = new Set();
+  for (const anchor of bodyElement?.querySelectorAll?.("a[href]") || []) {
+    const href = String(anchor.href || anchor.getAttribute("href") || "").trim();
+    if (!href || seen.has(href)) {
+      continue;
+    }
+    seen.add(href);
+    links.push({
+      text: normalizeWhitespace(anchor.innerText || anchor.textContent || "").slice(0, 200),
+      href: href.slice(0, 500)
+    });
+    if (links.length >= 30) {
+      break;
+    }
+  }
+  return links;
+}
+
+function buildCaptureRect(elements) {
+  const rects = elements
+    .filter((element) => isElementVisible(element))
+    .map((element) => element.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+  if (!rects.length) {
+    return null;
+  }
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const left = Math.max(0, Math.min(...rects.map((rect) => rect.left)) - 16);
+  const top = Math.max(0, Math.min(...rects.map((rect) => rect.top)) - 16);
+  const right = Math.min(viewportWidth, Math.max(...rects.map((rect) => rect.right)) + 16);
+  const bottom = Math.min(viewportHeight, Math.max(...rects.map((rect) => rect.bottom)) + 16);
+
+  return {
+    x: Math.max(0, Math.round(left)),
+    y: Math.max(0, Math.round(top)),
+    width: Math.max(1, Math.round(right - left)),
+    height: Math.max(1, Math.round(bottom - top)),
+    viewportWidth,
+    viewportHeight,
+    devicePixelRatio: window.devicePixelRatio || 1
+  };
+}
+
+function buildEmailPageContext(messageContainer, bodyElement, subjectElement) {
+  return {
+    url: window.location.href,
+    title: document.title || "",
+    provider: "gmail",
+    subjectVisible: Boolean(subjectElement),
+    bodyChars: getVisibleTextLength(bodyElement),
+    bodyNodeCount: bodyElement?.querySelectorAll?.("*")?.length || 0,
+    messageNodeCount: messageContainer?.querySelectorAll?.("*")?.length || 0,
+    capturedAt: new Date().toISOString()
+  };
+}
+
+function collectOpenGmailMessagePayload() {
+  if (!isGmailPage()) {
+    return null;
+  }
+
+  const bodyElement = findGmailBodyElement();
+  const subjectElement = findGmailSubjectElement();
+  if (!bodyElement || (!subjectElement && getVisibleTextLength(bodyElement) < 40)) {
+    return null;
+  }
+
+  const messageContainer = findGmailMessageContainer(bodyElement);
+  const senderInfo = extractSenderInfo(messageContainer || document);
+  const attachments = extractGmailAttachments(messageContainer || document);
+
+  return {
+    provider: "gmail",
+    pageUrl: window.location.href,
+    senderName: senderInfo.name,
+    senderEmail: senderInfo.email,
+    subject: normalizeWhitespace(subjectElement?.innerText || subjectElement?.textContent || ""),
+    bodyText: normalizeWhitespace(bodyElement.innerText || bodyElement.textContent || ""),
+    links: extractEmailLinks(bodyElement),
+    attachments,
+    warnings: extractGmailWarnings(messageContainer || document),
+    pageContext: buildEmailPageContext(messageContainer, bodyElement, subjectElement),
+    captureRect: buildCaptureRect([
+      subjectElement,
+      senderInfo.element,
+      bodyElement,
+      ...(messageContainer ? Array.from(messageContainer.querySelectorAll("[download_url]")).slice(0, 3) : [])
+    ].filter(Boolean))
+  };
+}
+
+function updateGmailAssistantUi() {
+  if (!shadow) {
+    return;
+  }
+  const gmailShell = shadow.getElementById("gmailShell");
+  const gmailCheckButton = shadow.getElementById("gmailCheckButton");
+  if (!gmailShell || !gmailCheckButton) {
+    return;
+  }
+
+  const payload = collectOpenGmailMessagePayload();
+  const shouldShow = Boolean(payload && currentDisplayOptions.protectionEnabled);
+  gmailShell.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) {
+    if (emailCheckState.status !== "running") {
+      emailCheckState = {
+        status: "idle",
+        error: "",
+        result: null
+      };
+    }
+    return;
+  }
+
+  const lang = currentLanguage();
+  gmailCheckButton.disabled = emailCheckState.status === "running";
+  gmailCheckButton.textContent = emailCheckState.status === "running"
+    ? t(lang, "emailCheckRunning")
+    : t(lang, "emailCheckAction");
+}
+
 function setConsentBusy(isBusy, message = "") {
   shadow.getElementById("consentStatus").textContent = message;
   shadow.getElementById("consentStatus").classList.toggle("busy", Boolean(isBusy && message));
@@ -679,7 +1053,7 @@ async function requestDetailedCheck(allowNow) {
     });
 
     if (response?.requiresConsent) {
-      showConsentOverlay("");
+      showConsentOverlay("", "page");
       setConsentBusy(false, "");
       return;
     }
@@ -702,6 +1076,74 @@ async function requestDetailedCheck(allowNow) {
     );
   } catch (error) {
     setConsentBusy(false, error.message || t(lang, "consentFailed"));
+  }
+}
+
+async function requestEmailCheck(allowNow) {
+  const lang = currentLanguage();
+  setConsentBusy(true, t(lang, "emailConsentSending"));
+  emailCheckState = {
+    status: "running",
+    error: "",
+    result: null
+  };
+  updateGmailAssistantUi();
+
+  try {
+    const response = await api.runtime.sendMessage({
+      type: "surfphish:request-email-check",
+      allowNow: Boolean(allowNow)
+    });
+
+    if (response?.requiresConsent) {
+      showConsentOverlay("", "email");
+      setConsentBusy(false, "");
+      emailCheckState = {
+        status: "idle",
+        error: "",
+        result: null
+      };
+      updateGmailAssistantUi();
+      return;
+    }
+
+    if (!response?.ok) {
+      const errorMessage = response?.error || t(lang, "emailConsentFailed");
+      setConsentBusy(false, errorMessage);
+      emailCheckState = {
+        status: "error",
+        error: errorMessage,
+        result: null
+      };
+      updateGmailAssistantUi();
+      return;
+    }
+
+    hideConsentOverlay();
+    emailCheckState = {
+      status: "complete",
+      error: "",
+      result: response.result || null
+    };
+    updateGmailAssistantUi();
+    showFullCheckResults(
+      response.result?.full_check_analysis || null,
+      response.result?.full_check_analysis_error?.message || t(lang, "emailResultUnavailable"),
+      {
+        titleKey: "emailResultTitle",
+        introKey: "emailResultIntro",
+        hideLeaveAction: true
+      }
+    );
+  } catch (error) {
+    const errorMessage = error.message || t(lang, "emailConsentFailed");
+    setConsentBusy(false, errorMessage);
+    emailCheckState = {
+      status: "error",
+      error: errorMessage,
+      result: null
+    };
+    updateGmailAssistantUi();
   }
 }
 
@@ -790,6 +1232,7 @@ function renderState(payload) {
     hideBanner();
     hideConsentOverlay();
     hideFullCheckResults();
+    updateGmailAssistantUi();
     return;
   }
 
@@ -797,6 +1240,7 @@ function renderState(payload) {
     hideBanner();
     hideConsentOverlay();
     hideFullCheckResults();
+    updateGmailAssistantUi();
     return;
   }
 
@@ -804,6 +1248,7 @@ function renderState(payload) {
     hideBanner();
     hideConsentOverlay();
     hideFullCheckResults();
+    updateGmailAssistantUi();
     return;
   }
 
@@ -811,6 +1256,7 @@ function renderState(payload) {
     hideBanner();
     hideConsentOverlay();
     hideFullCheckResults();
+    updateGmailAssistantUi();
     return;
   }
 
@@ -821,10 +1267,12 @@ function renderState(payload) {
       hideConsentOverlay();
       hideFullCheckResults();
     }
+    updateGmailAssistantUi();
     return;
   }
 
   renderBanner(currentState);
+  updateGmailAssistantUi();
 }
 
 function buildSerializedHtml() {
@@ -968,11 +1416,22 @@ api.runtime.onMessage.addListener((message) => {
   if (message?.type === "surfphish:show-full-check-consent") {
     ensureUi();
     applyStaticText();
-    showConsentOverlay("");
+    showConsentOverlay("", "page");
     return Promise.resolve({ ok: true });
+  }
+  if (message?.type === "surfphish:collect-email-payload") {
+    return Promise.resolve(collectOpenGmailMessagePayload());
   }
   if (message?.type === "surfphish:collect-page-payload") {
     return buildCompressedPagePayload();
+  }
+  if (message?.type === "surfphish:prepare-email-capture") {
+    hideExtensionUiForCapture();
+    return Promise.resolve({ ok: true });
+  }
+  if (message?.type === "surfphish:restore-email-capture") {
+    restoreExtensionUiAfterCapture();
+    return Promise.resolve({ ok: true });
   }
   if (message?.type === "surfphish:prepare-fullpage-capture") {
     hideExtensionUiForCapture();
@@ -1003,3 +1462,10 @@ api.runtime.sendMessage({ type: "surfphish:get-current-tab-state" })
   .catch(() => {
     // Ignore initialization failures when the background script is restarting.
   });
+
+window.setInterval(() => {
+  if (!root) {
+    return;
+  }
+  updateGmailAssistantUi();
+}, 1500);
