@@ -59,6 +59,13 @@ def _resolve_project_path(path_str: str) -> Path:
     return PROJECT_ROOT / path
 
 
+def _resolve_optional_project_path(path_str: str | None) -> Path | None:
+    value = str(path_str or "").strip()
+    if not value:
+        return None
+    return _resolve_project_path(value)
+
+
 @dataclass(frozen=True)
 class AppSettings:
     model_path: Path
@@ -77,6 +84,16 @@ class AppSettings:
     feedback_log_path: Path
     feedback_html_dir: Path
     screenshot_dir: Path
+    collector_browser_executable: str
+    collector_browser_user_data_root: Path | None
+    collector_collection_mode: str
+    collector_cache_policy: str
+    collector_artifact_profile: str
+    collector_locale: str
+    collector_timezone: str
+    collector_fingerprint_seed: int
+    collector_timeout: int
+    collector_headless: bool
     realfake_enabled: bool
     realfake_api_base_url: str
     realfake_timeout: int
@@ -128,6 +145,18 @@ def get_settings() -> AppSettings:
         screenshot_dir=_resolve_project_path(
             os.getenv("APP_SCREENSHOT_DIR", "logs/url_scanner_screenshots")
         ),
+        collector_browser_executable=os.getenv("APP_COLLECTOR_BROWSER_EXECUTABLE", "").strip(),
+        collector_browser_user_data_root=_resolve_optional_project_path(
+            os.getenv("APP_COLLECTOR_BROWSER_USER_DATA_ROOT", "")
+        ),
+        collector_collection_mode=os.getenv("APP_COLLECTOR_COLLECTION_MODE", "browser_required").strip() or "browser_required",
+        collector_cache_policy=os.getenv("APP_COLLECTOR_CACHE_POLICY", "reuse").strip() or "reuse",
+        collector_artifact_profile=os.getenv("APP_COLLECTOR_ARTIFACT_PROFILE", "rich").strip() or "rich",
+        collector_locale=os.getenv("APP_COLLECTOR_LOCALE", "en-US").strip() or "en-US",
+        collector_timezone=os.getenv("APP_COLLECTOR_TIMEZONE", "UTC").strip() or "UTC",
+        collector_fingerprint_seed=_as_int("APP_COLLECTOR_FINGERPRINT_SEED", 1000),
+        collector_timeout=_as_int("APP_COLLECTOR_TIMEOUT", 20),
+        collector_headless=_as_bool("APP_COLLECTOR_HEADLESS", True),
         realfake_enabled=_as_bool("APP_REALFAKE_ENABLED", False),
         realfake_api_base_url=os.getenv("APP_REALFAKE_API_BASE_URL", "").strip().rstrip("/"),
         realfake_timeout=_as_int("APP_REALFAKE_TIMEOUT", 45),

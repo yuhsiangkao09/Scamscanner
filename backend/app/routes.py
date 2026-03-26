@@ -462,3 +462,215 @@ async def handle_scan(request: Request):
             {"error": str(exc)},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@router.post("/api/scan/fetch-url")
+async def handle_scan_fetch_url(request: Request):
+    service = _scanner_service(request)
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    url = str(payload.get("url", "")).strip()
+    debug = bool(payload.get("debug", False))
+    timeout = payload.get("timeout", service.settings.collector_timeout)
+    collection_mode = payload.get("collection_mode")
+    cache_policy = payload.get("cache_policy")
+    artifact_profile = payload.get("artifact_profile")
+    proxy = payload.get("proxy")
+    locale = payload.get("locale")
+    timezone = payload.get("timezone")
+    fingerprint_seed = payload.get("fingerprint_seed")
+    headless = payload.get("headless")
+
+    if not url:
+        return JSONResponse(
+            {"error": "Missing URL input"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        collector_timeout = int(timeout)
+    except (TypeError, ValueError):
+        return JSONResponse(
+            {"error": "Invalid timeout value"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    service.log_received_payload(
+        input_mode="collector_url",
+        request_url=url,
+        source_url=url,
+        html_content="",
+        payload=payload,
+        debug=debug,
+        insecure=False,
+        timeout=collector_timeout,
+    )
+
+    collection_payload = None
+    collector_request = None
+    total_started = time.perf_counter()
+    try:
+        result, model_timings = await service.scan(
+            url=url,
+            debug=debug,
+            insecure=False,
+            timeout=collector_timeout,
+        )
+        request_url = (
+            ((result.get("preprocess_debug") or {}).get("final_url"))
+            or url
+        )
+        result["detail_level"] = "collector_url"
+
+        timings = {
+            **model_timings,
+        }
+
+        screenshot_payload = None
+        collector_error = None
+        try:
+            collector_request, collected_page = await service.collect_page_from_url(
+                url=request_url,
+                timeout=collector_timeout,
+                collection_mode=collection_mode,
+                cache_policy=cache_policy,
+                artifact_profile=artifact_profile,
+                proxy=proxy,
+                locale=locale,
+                timezone=timezone,
+                fingerprint_seed=fingerprint_seed,
+                headless=headless,
+            )
+            collection_payload = service.build_collection_payload(collector_request, collected_page)
+            timings["collector_ms"] = float((collected_page.timings or {}).get("elapsed_ms", 0.0))
+            timings["collector_settle_ms"] = float((collected_page.timings or {}).get("settle_ms", 0.0))
+
+            screenshot_payload = await asyncio.to_thread(service.load_collector_screenshot, collected_page)
+            if screenshot_payload:
+                artifacts = dict(result.get("artifacts") or {})
+                artifacts["collector_screenshot"] = {
+                    "stored_path": screenshot_payload["path"],
+                    "format": screenshot_payload["image_format"],
+                }
+                result["artifacts"] = artifacts
+            else:
+                collector_error = {
+                    "type": "CollectorScreenshotMissing",
+                    "message": "Collector did not produce a screenshot for RealFake analysis.",
+                }
+        except Exception as exc:
+            collector_error = {
+                "type": exc.__class__.__name__,
+                "message": str(exc),
+            }
+            result["collector_error"] = collector_error
+
+        if service.realfake.enabled:
+            full_check_started = time.perf_counter()
+            try:
+                if not screenshot_payload:
+                    if collector_error:
+                        raise RuntimeError(collector_error["message"])
+                    raise RuntimeError("Collector did not produce a screenshot for RealFake analysis.")
+                full_check_analysis = await asyncio.to_thread(
+                    service.analyze_full_check,
+                    url=request_url,
+                    image_bytes=screenshot_payload["image_bytes"],
+                    image_format=screenshot_payload["image_format"],
+                )
+                if full_check_analysis is not None:
+                    result["full_check_analysis"] = full_check_analysis
+            except Exception as exc:
+                result["full_check_analysis_error"] = {
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                }
+            finally:
+                timings["full_check_analysis_ms"] = (time.perf_counter() - full_check_started) * 1000.0
+
+        timings["total_ms"] = (time.perf_counter() - total_started) * 1000.0
+
+        response_result = result
+        if not debug:
+            response_result = dict(result)
+            response_result.pop("preprocess_debug", None)
+            response_result.pop("model_debug", None)
+
+        service.log_scan_result(
+            request_url=request_url,
+            result=result,
+            timings=timings,
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=request_url,
+                input_mode="collector_url",
+                debug=debug,
+                insecure=False,
+                timeout=collector_request.timeout_sec if collector_request is not None else collector_timeout,
+                status="success",
+                result=result,
+                timings=timings,
+                http_status=(result.get("preprocess_debug") or {}).get("http_status"),
+            )
+        )
+        return {"result": response_result, "timings": timings}
+    except requests.exceptions.RequestException as exc:
+        response = getattr(exc, "response", None)
+        service.log_scan_error(
+            request_url=url,
+            input_mode="collector_url",
+            error_type=exc.__class__.__name__,
+            error_message=str(exc),
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=url,
+                input_mode="collector_url",
+                debug=debug,
+                insecure=False,
+                timeout=collector_timeout,
+                status="error",
+                error={
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                    "collection": collection_payload,
+                },
+                http_status=None if response is None else response.status_code,
+            )
+        )
+        return JSONResponse(
+            {"error": f"Request failed: {exc}", "collection": collection_payload},
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
+    except Exception as exc:
+        service.log_scan_error(
+            request_url=url,
+            input_mode="collector_url",
+            error_type=exc.__class__.__name__,
+            error_message=str(exc),
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=url,
+                input_mode="collector_url",
+                debug=debug,
+                insecure=False,
+                timeout=collector_timeout,
+                status="error",
+                error={
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                    "collection": collection_payload,
+                },
+            )
+        )
+        return JSONResponse(
+            {"error": str(exc), "collection": collection_payload},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

@@ -11,6 +11,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import numpy as np
+from collector import (
+    ArtifactProfile,
+    CachePolicy,
+    CollectionMode,
+    CollectionRequest,
+    CollectorTier,
+    collect,
+)
 
 from .services.detector import PhishingDetector
 from .services.preprocessor import URLPreprocessor
@@ -50,6 +58,13 @@ class ScannerService:
         self.feedback_html_dir.mkdir(parents=True, exist_ok=True)
         self.screenshot_dir = Path(settings.screenshot_dir)
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _enum_or_default(enum_cls, value, default):
+        try:
+            return enum_cls(str(value or default).strip().lower())
+        except Exception:
+            return enum_cls(default)
 
     @staticmethod
     def _log_prefix() -> str:
@@ -260,6 +275,128 @@ class ScannerService:
         async with self.history_lock:
             return list(self.history)
 
+    def build_collection_request(
+        self,
+        *,
+        url,
+        timeout=None,
+        collection_mode=None,
+        cache_policy=None,
+        artifact_profile=None,
+        proxy=None,
+        locale=None,
+        timezone=None,
+        fingerprint_seed=None,
+        headless=None,
+    ):
+        resolved_timeout = self.settings.collector_timeout if timeout is None else int(timeout)
+        return CollectionRequest(
+            url=url,
+            collection_mode=self._enum_or_default(
+                CollectionMode,
+                collection_mode or self.settings.collector_collection_mode,
+                self.settings.collector_collection_mode,
+            ),
+            artifact_profile=self._enum_or_default(
+                ArtifactProfile,
+                artifact_profile or self.settings.collector_artifact_profile,
+                self.settings.collector_artifact_profile,
+            ),
+            cache_policy=self._enum_or_default(
+                CachePolicy,
+                cache_policy or self.settings.collector_cache_policy,
+                self.settings.collector_cache_policy,
+            ),
+            proxy=str(proxy or "").strip() or None,
+            locale=str(locale or self.settings.collector_locale).strip() or self.settings.collector_locale,
+            timezone=str(timezone or self.settings.collector_timezone).strip() or self.settings.collector_timezone,
+            fingerprint_seed=(
+                self.settings.collector_fingerprint_seed
+                if fingerprint_seed is None
+                else int(fingerprint_seed)
+            ),
+            browser_tier=CollectorTier.CHROMIUM_HARDENED,
+            browser_executable=self.settings.collector_browser_executable or None,
+            browser_user_data_root=self.settings.collector_browser_user_data_root,
+            timeout_sec=resolved_timeout,
+            headless=self.settings.collector_headless if headless is None else bool(headless),
+        )
+
+    async def collect_page_from_url(self, **kwargs):
+        request = self.build_collection_request(**kwargs)
+        page = await collect(request)
+        return request, page
+
+    @staticmethod
+    def _load_collector_manifest(page):
+        if not page or not page.manifest_path or not Path(page.manifest_path).exists():
+            return {}
+        try:
+            return json.loads(Path(page.manifest_path).read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def build_collection_payload(self, request, page):
+        manifest_payload = self._load_collector_manifest(page)
+        artifact_paths = manifest_payload.get("artifact_paths") or {}
+        return {
+            "request": {
+                "url": request.url,
+                "collection_mode": request.collection_mode.value,
+                "artifact_profile": request.artifact_profile.value,
+                "cache_policy": request.cache_policy.value,
+                "timeout_sec": request.timeout_sec,
+                "locale": request.locale,
+                "timezone": request.timezone,
+                "fingerprint_seed": request.fingerprint_seed,
+                "headless": bool(request.headless),
+                "browser_tier": request.browser_tier.value,
+                "browser_executable": request.browser_executable,
+            },
+            "status": page.status.value if hasattr(page.status, "value") else str(page.status),
+            "reason": page.reason.value if hasattr(page.reason, "value") else str(page.reason),
+            "tier_used": page.tier_used.value if hasattr(page.tier_used, "value") else str(page.tier_used),
+            "fallback_reason": (
+                page.fallback_reason.value
+                if getattr(page.fallback_reason, "value", None) is not None
+                else page.fallback_reason
+            ),
+            "requested_url": page.requested_url,
+            "final_url": page.final_url,
+            "http_status": page.http_status,
+            "redirect_chain": page.redirect_chain,
+            "signals": page.signals,
+            "timings": page.timings,
+            "network_summary": page.network_summary,
+            "runtime_features": page.runtime_features,
+            "runtime_feature_mask": page.runtime_feature_mask,
+            "provenance": page.provenance,
+            "cache_key": page.cache_key,
+            "error_message": page.error_message,
+            "artifact_dir": str(page.artifact_dir),
+            "manifest_path": str(page.manifest_path),
+            "artifact_paths": artifact_paths,
+            "final_html_chars": len(page.final_html or ""),
+        }
+
+    def load_collector_screenshot(self, page):
+        manifest_payload = self._load_collector_manifest(page)
+        artifact_paths = manifest_payload.get("artifact_paths") or {}
+        screenshot_path = artifact_paths.get("screenshot")
+        if not screenshot_path:
+            fallback = Path(page.artifact_dir) / "screenshot.png"
+            screenshot_path = str(fallback) if fallback.exists() else ""
+        if not screenshot_path:
+            return None
+        path = Path(screenshot_path)
+        if not path.exists():
+            return None
+        return {
+            "path": str(path),
+            "image_bytes": path.read_bytes(),
+            "image_format": "png",
+        }
+
     async def append_feedback_log(self, feedback_record) -> None:
         line = json.dumps(self._json_ready(feedback_record), ensure_ascii=False)
         async with self.feedback_log_lock:
@@ -372,6 +509,20 @@ class ScannerService:
             "feedback_log_path": str(self.feedback_log_path),
             "feedback_html_dir": str(self.feedback_html_dir),
             "screenshot_dir": str(self.screenshot_dir),
+            "collector_browser_executable": self.settings.collector_browser_executable,
+            "collector_browser_user_data_root": (
+                str(self.settings.collector_browser_user_data_root)
+                if self.settings.collector_browser_user_data_root is not None
+                else None
+            ),
+            "collector_collection_mode": self.settings.collector_collection_mode,
+            "collector_cache_policy": self.settings.collector_cache_policy,
+            "collector_artifact_profile": self.settings.collector_artifact_profile,
+            "collector_locale": self.settings.collector_locale,
+            "collector_timezone": self.settings.collector_timezone,
+            "collector_fingerprint_seed": self.settings.collector_fingerprint_seed,
+            "collector_timeout": self.settings.collector_timeout,
+            "collector_headless": self.settings.collector_headless,
             "realfake_enabled": self.realfake.enabled,
             "realfake_api_base_url": self.realfake.api_base_url,
             "realfake_timeout": self.realfake.timeout,

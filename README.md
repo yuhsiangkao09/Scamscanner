@@ -168,6 +168,25 @@ Open the extension popup and confirm:
 
 Even if the page currently looks benign, the popup still provides a `Full Check` button.
 
+### Fetch-URL API
+
+Use the CLI helper to test the backend route that accepts only a URL:
+
+```powershell
+cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan
+.\.venv\Scripts\python.exe tools\test_fetch_url.py https://example.com --pretty
+```
+
+Use a remote backend:
+
+```powershell
+.\.venv\Scripts\python.exe tools\test_fetch_url.py https://example.com --api-base-url https://your-api-domain
+```
+
+Full endpoint guide:
+
+- [docs/fetch-url-api-guide.md](/c:/Users/snoozedog/Desktop/workspace/0326/scamscan/docs/fetch-url-api-guide.md)
+
 ## Screenshot Behavior
 
 Current Full Check screenshot behavior:
