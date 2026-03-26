@@ -585,7 +585,8 @@ async function pushContentUpdate(tabId, state) {
         state,
         showBanner: settings.showBanner,
         blockHighRiskInterstitial: settings.blockHighRiskInterstitial,
-        uiLanguage: settings.uiLanguage
+        uiLanguage: settings.uiLanguage,
+        protectionEnabled: isProtectionEnabled()
       }
     });
   } catch (error) {

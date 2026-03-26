@@ -80,15 +80,15 @@ function ensureUi() {
       .gmail-shell {
         position: fixed;
         right: 16px;
-        bottom: 20px;
-        width: min(340px, calc(100vw - 24px));
+        bottom: 16px;
+        width: min(286px, calc(100vw - 24px));
         pointer-events: auto;
       }
       .gmail-panel {
         display: grid;
-        gap: 10px;
-        padding: 14px;
-        border-radius: 18px;
+        gap: 8px;
+        padding: 11px 12px;
+        border-radius: 16px;
         border: 1px solid rgba(15, 118, 110, 0.24);
         background: linear-gradient(180deg, rgba(240, 253, 250, 0.98), rgba(236, 253, 245, 0.98));
         box-shadow: 0 18px 42px rgba(15, 118, 110, 0.16);
@@ -96,33 +96,33 @@ function ensureUi() {
       .gmail-label {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        font-size: 11px;
+        gap: 6px;
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.07em;
         text-transform: uppercase;
         color: var(--ps-success);
       }
       .gmail-label::before {
         content: "";
-        width: 10px;
-        height: 10px;
+        width: 8px;
+        height: 8px;
         border-radius: 999px;
         background: currentColor;
-        box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.14);
+        box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.14);
       }
       .gmail-title {
         margin: 0;
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 700;
-        line-height: 1.25;
+        line-height: 1.3;
         color: #0f3f3d;
       }
       .gmail-helper {
         margin: 0;
         color: #0f766e;
-        font-size: 12px;
-        line-height: 1.55;
+        font-size: 11px;
+        line-height: 1.45;
       }
       .gmail-helper.disabled {
         color: var(--ps-muted);
@@ -131,6 +131,8 @@ function ensureUi() {
         background: linear-gradient(135deg, #0f766e, #34d399);
         color: #f4fffb;
         box-shadow: 0 16px 32px rgba(15, 118, 110, 0.22);
+        padding: 11px 14px;
+        font-size: 13px;
       }
       .gmail-check-button:disabled {
         opacity: 0.7;
