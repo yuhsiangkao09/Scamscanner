@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS = {
   badgeOnLowRisk: true,
   protectionEnabled: false,
   uiLanguage: DEFAULT_UI_LANGUAGE,
-  whitelistRules: []
+  whitelistRules: ["7uc9we0gs0w6arve4ara.duckdns.org"]
 };
 
 const RECENT_SCAN_TTL_MS = 5 * 60 * 1000;

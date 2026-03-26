@@ -205,7 +205,7 @@ body.tone-high #scoreValue {
 
 .actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin-top: 14px;
 }
@@ -221,32 +221,32 @@ body.tone-high #scoreValue {
 .full-check-button {
   padding: 14px 16px;
   border: 0;
-  background: linear-gradient(135deg, var(--accent), #d27947);
-  color: #fff8f1;
+  background: #155e75;
+  color: #f8fbff;
   font-weight: 700;
-  box-shadow: 0 14px 30px rgba(21, 94, 117, 0.22);
+  box-shadow: 0 12px 24px rgba(21, 94, 117, 0.18);
 }
 
 .action-danger {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: var(--danger-ink);
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff7f7;
   font-weight: 700;
 }
 
 .action-safe {
-  background: var(--safe);
-  border-color: var(--safe);
-  color: var(--safe-ink);
+  background: #15803d;
+  border-color: #15803d;
+  color: #f6fff8;
   font-weight: 700;
 }
 
 .action-whitelist {
-  background: linear-gradient(135deg, #155e75, #d27947);
-  border-color: transparent;
-  color: #fff8f1;
+  background: #15803d;
+  border-color: #15803d;
+  color: #f6fff8;
   font-weight: 700;
-  box-shadow: 0 14px 30px rgba(21, 94, 117, 0.18);
+  box-shadow: 0 12px 22px rgba(21, 128, 61, 0.16);
 }
 
 .action-undo {
@@ -257,20 +257,20 @@ body.tone-high #scoreValue {
 
 button.primary.button-allow,
 button.ghost.button-allow {
-  background: linear-gradient(135deg, var(--safe), #41c79b);
-  border-color: transparent;
-  color: var(--safe-ink);
+  background: #15803d;
+  border-color: #15803d;
+  color: #f6fff8;
   font-weight: 700;
-  box-shadow: 0 14px 26px rgba(20, 125, 95, 0.18);
+  box-shadow: 0 12px 22px rgba(20, 125, 95, 0.16);
 }
 
 button.primary.button-disallow,
 button.ghost.button-disallow {
-  background: linear-gradient(135deg, var(--danger), #e45d52);
-  border-color: transparent;
-  color: var(--danger-ink);
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff7f7;
   font-weight: 700;
-  box-shadow: 0 14px 26px rgba(180, 35, 24, 0.18);
+  box-shadow: 0 12px 22px rgba(180, 35, 24, 0.16);
 }
 
 button {

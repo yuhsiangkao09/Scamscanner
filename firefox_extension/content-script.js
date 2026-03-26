@@ -130,9 +130,9 @@ function ensureUi() {
         color: var(--ps-muted);
       }
       .gmail-check-button {
-        background: linear-gradient(135deg, #0f766e, #34d399);
-        color: #f4fffb;
-        box-shadow: 0 16px 32px rgba(15, 118, 110, 0.22);
+        background: #155e75;
+        color: #f8fbff;
+        box-shadow: 0 14px 28px rgba(21, 94, 117, 0.18);
         padding: 11px 14px;
         font-size: 13px;
       }
@@ -140,7 +140,7 @@ function ensureUi() {
         opacity: 0.7;
         cursor: default;
         box-shadow: none;
-        background: linear-gradient(135deg, #64748b, #94a3b8);
+        background: #64748b;
         color: #eef2f7;
       }
       .card {
@@ -267,15 +267,17 @@ function ensureUi() {
         border: 0;
         border-radius: 999px;
         padding: 14px 16px;
-        background: linear-gradient(135deg, var(--ps-accent), #d27947);
-        color: #fff8f1;
+        background: #155e75;
+        color: #f8fbff;
         font: inherit;
         font-weight: 700;
         cursor: pointer;
+        box-shadow: 0 14px 28px rgba(21, 94, 117, 0.18);
       }
       .primary-action:disabled {
         opacity: 0.6;
         cursor: default;
+        box-shadow: none;
       }
       .helper {
         margin: 0;
@@ -336,8 +338,8 @@ function ensureUi() {
         color: var(--ps-surface);
       }
       .dialog-button.success {
-        background: linear-gradient(135deg, #0f766e, #34d399);
-        color: #f4fffb;
+        background: #15803d;
+        color: #f6fff8;
       }
       .dialog-button.secondary {
         background: var(--ps-soft);
@@ -345,9 +347,9 @@ function ensureUi() {
         border: 1px solid var(--ps-line);
       }
       .dialog-button.danger {
-        background: linear-gradient(135deg, #b91c1c, #ef4444);
+        background: #b91c1c;
         color: #fff7f7;
-        box-shadow: 0 16px 28px rgba(185, 28, 28, 0.22);
+        box-shadow: 0 14px 24px rgba(185, 28, 28, 0.18);
       }
       .dialog-button:disabled {
         opacity: 0.55;
@@ -1268,7 +1270,8 @@ function renderState(payload) {
   };
   currentState = payload?.state || null;
   applyStaticText();
-  const preserveEmailConsentOverlay = consentMode === "email" && emailCheckManualMode;
+  const preserveEmailConsentOverlay = consentMode === "email"
+    && (emailCheckManualMode || emailCheckState.status === "running");
   const preserveEmailResultOverlay = activeResultMode === "email";
 
   if (!payload?.showBanner || !currentState) {
