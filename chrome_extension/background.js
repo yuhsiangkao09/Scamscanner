@@ -700,11 +700,12 @@ async function syncProtectionStateAfterSettingsChange() {
   }
 }
 
-async function collectPagePayload(tabId, url) {
+async function collectPagePayload(tabId, url, options = {}) {
   console.debug("[SurfPhish] Requesting DOM payload from tab.", { tabId, url });
   return withTimeout(
     api.tabs.sendMessage(tabId, {
-      type: "surfphish:collect-page-payload"
+      type: "surfphish:collect-page-payload",
+      fullHtml: Boolean(options.fullHtml)
     }),
     5000,
     "Timed out while collecting page DOM."
@@ -1071,7 +1072,7 @@ async function performDetailedCheck(tabId, allowNow = false) {
   await setTabState(tabId, runningState);
 
   try {
-    const pagePayload = await collectPagePayload(tabId, url);
+    const pagePayload = await collectPagePayload(tabId, url, { fullHtml: true });
     if (!pagePayload?.sourceUrl || (!pagePayload.html && !pagePayload.htmlGzipBase64)) {
       throw new Error("Page snapshot was empty or incomplete.");
     }
@@ -1271,7 +1272,7 @@ async function scanTab(tabId, url, options = {}) {
   let pagePayload;
   let lookup;
   try {
-    pagePayload = await collectPagePayload(tabId, url);
+      pagePayload = await collectPagePayload(tabId, url, { fullHtml: false });
   } catch (error) {
     lookup = await lookupPromise;
     const nextState = lookup?.status === "complete" && lookup.found

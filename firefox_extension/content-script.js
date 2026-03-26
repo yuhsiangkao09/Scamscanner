@@ -1341,12 +1341,49 @@ function renderState(payload) {
   updateGmailAssistantUi();
 }
 
-function buildSerializedHtml() {
+function sanitizeClonedDomForStructure(rootElement) {
+  const nodeStack = [rootElement];
+  while (nodeStack.length) {
+    const node = nodeStack.pop();
+    if (!node) {
+      continue;
+    }
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      node.textContent = "";
+      continue;
+    }
+
+    if (node.nodeType === Node.COMMENT_NODE) {
+      node.textContent = "";
+      continue;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+
+    for (const attr of Array.from(node.attributes || [])) {
+      node.setAttribute(attr.name, "1");
+    }
+
+    const children = Array.from(node.childNodes || []);
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      nodeStack.push(children[index]);
+    }
+  }
+}
+
+function buildSerializedHtml(options = {}) {
+  const includeFullHtml = Boolean(options.includeFullHtml);
   const doctype = document.doctype
     ? new XMLSerializer().serializeToString(document.doctype)
     : "<!DOCTYPE html>";
   const clonedRoot = document.documentElement.cloneNode(true);
   clonedRoot.querySelector("#surfphish-root")?.remove();
+  if (!includeFullHtml) {
+    sanitizeClonedDomForStructure(clonedRoot);
+  }
   return `${doctype}\n${clonedRoot.outerHTML}`;
 }
 
@@ -1398,14 +1435,16 @@ async function gzipHtmlToBase64(html) {
   return arrayBufferToBase64(compressed);
 }
 
-async function buildCompressedPagePayload() {
-  const html = buildSerializedHtml();
+async function buildCompressedPagePayload(options = {}) {
+  const includeFullHtml = Boolean(options.includeFullHtml);
+  const html = buildSerializedHtml({ includeFullHtml });
   const pageContext = buildPageContext(html);
   const fallbackPayload = {
     sourceUrl: window.location.href,
     html,
     htmlEncoding: "identity",
-    pageContext
+    pageContext,
+    payloadMode: includeFullHtml ? "full_html" : "dom_structure"
   };
 
   if (typeof CompressionStream !== "function" || html.length < 200000) {
@@ -1421,7 +1460,8 @@ async function buildCompressedPagePayload() {
       sourceUrl: window.location.href,
       htmlGzipBase64,
       htmlEncoding: "gzip+base64",
-      pageContext
+      pageContext,
+      payloadMode: includeFullHtml ? "full_html" : "dom_structure"
     };
   } catch (error) {
     return fallbackPayload;
@@ -1478,8 +1518,8 @@ function restoreExtensionUiAfterCapture() {
   captureUiState = null;
 }
 
-api.runtime.onMessage.addListener((message) => {
-  if (message?.type === "surfphish:show-full-check-consent") {
+  api.runtime.onMessage.addListener((message) => {
+    if (message?.type === "surfphish:show-full-check-consent") {
     ensureUi();
     applyStaticText();
     showConsentOverlay("", "page");
@@ -1494,9 +1534,11 @@ api.runtime.onMessage.addListener((message) => {
   if (message?.type === "surfphish:collect-email-payload") {
     return Promise.resolve(collectOpenGmailMessagePayload());
   }
-  if (message?.type === "surfphish:collect-page-payload") {
-    return buildCompressedPagePayload();
-  }
+    if (message?.type === "surfphish:collect-page-payload") {
+      return buildCompressedPagePayload({
+        includeFullHtml: Boolean(message.fullHtml)
+      });
+    }
   if (message?.type === "surfphish:prepare-email-capture") {
     hideExtensionUiForCapture();
     return Promise.resolve({ ok: true });
