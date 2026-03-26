@@ -5,6 +5,7 @@ let root;
 let shadow;
 let currentState = null;
 let captureUiState = null;
+let captureInteractionLockState = null;
 let bannerAutoHideTimer = null;
 let consentMode = "page";
 let emailCheckManualMode = false;
@@ -1509,6 +1510,81 @@ function hideExtensionUiForCapture() {
   root.style.pointerEvents = "none";
 }
 
+const CAPTURE_BLOCKED_EVENT_TYPES = [
+  "click",
+  "dblclick",
+  "mousedown",
+  "mouseup",
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "touchstart",
+  "touchmove",
+  "touchend",
+  "wheel",
+  "contextmenu",
+  "keydown",
+  "keypress",
+  "keyup"
+];
+
+function preventCaptureInteraction(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function enableCaptureInteractionLock() {
+  if (captureInteractionLockState) {
+    return;
+  }
+  const docEl = document.documentElement;
+  const body = document.body;
+  captureInteractionLockState = {
+    htmlOverflow: docEl?.style.overflow || "",
+    htmlTouchAction: docEl?.style.touchAction || "",
+    bodyOverflow: body?.style.overflow || "",
+    bodyTouchAction: body?.style.touchAction || ""
+  };
+
+  if (docEl) {
+    docEl.style.overflow = "hidden";
+    docEl.style.touchAction = "none";
+  }
+  if (body) {
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+  }
+
+  for (const eventType of CAPTURE_BLOCKED_EVENT_TYPES) {
+    document.addEventListener(eventType, preventCaptureInteraction, {
+      capture: true,
+      passive: false
+    });
+  }
+}
+
+function disableCaptureInteractionLock() {
+  if (!captureInteractionLockState) {
+    return;
+  }
+
+  for (const eventType of CAPTURE_BLOCKED_EVENT_TYPES) {
+    document.removeEventListener(eventType, preventCaptureInteraction, true);
+  }
+
+  const docEl = document.documentElement;
+  const body = document.body;
+  if (docEl) {
+    docEl.style.overflow = captureInteractionLockState.htmlOverflow;
+    docEl.style.touchAction = captureInteractionLockState.htmlTouchAction;
+  }
+  if (body) {
+    body.style.overflow = captureInteractionLockState.bodyOverflow;
+    body.style.touchAction = captureInteractionLockState.bodyTouchAction;
+  }
+  captureInteractionLockState = null;
+}
+
 function restoreExtensionUiAfterCapture() {
   if (!root || !captureUiState) {
     return;
@@ -1549,6 +1625,7 @@ function restoreExtensionUiAfterCapture() {
   }
   if (message?.type === "surfphish:prepare-fullpage-capture") {
     hideExtensionUiForCapture();
+    enableCaptureInteractionLock();
     return Promise.resolve(getCaptureMetrics());
   }
   if (message?.type === "surfphish:set-fullpage-capture-scroll") {
@@ -1557,6 +1634,7 @@ function restoreExtensionUiAfterCapture() {
   if (message?.type === "surfphish:restore-fullpage-capture-scroll") {
     return setCaptureScroll(Number(message.x || 0), Number(message.y || 0)).then((result) => {
       restoreExtensionUiAfterCapture();
+      disableCaptureInteractionLock();
       return result;
     });
   }
