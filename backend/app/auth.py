@@ -123,24 +123,14 @@ def render_login_html(error_message: str = "") -> str:
       font-family: "Segoe UI", Arial, sans-serif;
     }}
     .card {{
-      width: min(960px, 100%);
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      overflow: hidden;
-      border-radius: 28px;
+      width: min(460px, 100%);
+      border-radius: 24px;
       background: var(--surface);
       border: 1px solid var(--line);
       box-shadow: var(--shadow);
     }}
-    .brand {{
-      padding: 34px;
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 70%, transparent), transparent),
-        var(--surface-soft);
-      border-right: 1px solid var(--line);
-    }}
     .form-panel {{
-      padding: 34px;
+      padding: 30px;
     }}
     .eyebrow {{
       margin: 0 0 10px;
@@ -203,59 +193,14 @@ def render_login_html(error_message: str = "") -> str:
       color: var(--danger);
       font-size: 14px;
     }}
-    .fact-list {{
-      display: grid;
-      gap: 14px;
-      margin-top: 26px;
-    }}
-    .fact {{
-      padding: 16px 18px;
-      border-radius: 18px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.46);
-    }}
-    .fact strong {{
-      display: block;
-      margin-bottom: 6px;
-      font-size: 14px;
-    }}
-    .fact span {{
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-    }}
-    @media (max-width: 780px) {{
-      .card {{
-        grid-template-columns: 1fr;
-      }}
-      .brand {{
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-      }}
-    }}
   </style>
 </head>
 <body>
   <div class="card">
-    <section class="brand">
+    <section class="form-panel">
       <p class="eyebrow">SurfPhish</p>
       <h1>Scanner Dashboard</h1>
-      <p>Sign in to view the protected scanning dashboard, recent events, and user feedback reports.</p>
-      <div class="fact-list">
-        <div class="fact">
-          <strong>FastAPI backend</strong>
-          <span>The service now runs with a dedicated app entrypoint and environment-based configuration.</span>
-        </div>
-        <div class="fact">
-          <strong>Protected dashboard</strong>
-          <span>Dashboard and admin APIs require the administrator password stored in your backend environment.</span>
-        </div>
-      </div>
-    </section>
-    <section class="form-panel">
-      <p class="eyebrow">Admin Access</p>
-      <h1>Login</h1>
-      <p>Use the administrator password from <code>backend/.env</code>.</p>
+      <p>Use your encryption password.</p>
       <form method="post" action="/login">
         <label>
           Password

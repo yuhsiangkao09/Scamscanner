@@ -2,7 +2,7 @@ const api = globalThis.browser ?? globalThis.chrome;
 const { DEFAULT_UI_LANGUAGE, normalizeUiLanguage } = globalThis.SurfPhishI18n;
 
 const DEFAULT_SETTINGS = {
-  apiBaseUrl: "http://127.0.0.1:8000",
+  apiBaseUrl: "https://7uc9we0gs0w6arve4ara.duckdns.org",
   scanTimeout: 15,
   autoScan: true,
   showBanner: true,
@@ -18,6 +18,7 @@ const RECENT_SCAN_TTL_MS = 5 * 60 * 1000;
 const MAX_FEEDBACK_EVENTS = 200;
 const MAX_USER_SITE_DECISIONS = 500;
 const MAX_STITCHED_PIXELS = 16_000_000;
+const MAX_FULLPAGE_CAPTURE_SCROLLS = 6;
 const CAPTURE_SETTLE_MS = 420;
 const LOOKUP_API_URL = "https://ynhy80qtt6.execute-api.us-west-2.amazonaws.com/prod/lookup";
 const LOOKUP_TIMEOUT_MS = 8000;
@@ -403,6 +404,22 @@ function summarizeResult(scanResult) {
   };
 }
 
+function applyLookupRiskToSummary(summary, lookup) {
+  const baseSummary = summary && typeof summary === "object" ? summary : summarizeResult({});
+  if (!lookup || lookup.status !== "complete" || !lookup.found) {
+    return baseSummary;
+  }
+
+  return {
+    ...baseSummary,
+    riskLevel: "HIGH",
+    isPhishing: true,
+    lookupMatched: true,
+    lookupMatchCount: toFiniteNumber(lookup.matchCount, 0),
+    riskSource: baseSummary.isPhishing ? "scanner+lookup" : "lookup"
+  };
+}
+
 function toFiniteNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -592,6 +609,22 @@ function buildErrorState(url, errorMessage, extra = {}) {
   };
 }
 
+function buildLookupRiskState(url, lookup, errorMessage, extra = {}) {
+  return {
+    status: "ready",
+    url,
+    summary: applyLookupRiskToSummary(summarizeResult({}), lookup),
+    rawResult: null,
+    timings: {},
+    pageContext: extra.pageContext || null,
+    lookup: lookup || null,
+    decision: extra.decision || null,
+    detailedCheck: extra.detailedCheck || null,
+    collectorError: errorMessage,
+    updatedAt: Date.now()
+  };
+}
+
 function withTimeout(promise, ms, message) {
   return Promise.race([
     promise,
@@ -745,7 +778,9 @@ async function captureFullPageScreenshot(tabId) {
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     const xPositions = buildCapturePositions(totalWidth, viewportWidth);
-    const yPositions = buildCapturePositions(totalHeight, viewportHeight);
+    const allYPositions = buildCapturePositions(totalHeight, viewportHeight);
+    const maxVerticalTiles = Math.max(1, MAX_FULLPAGE_CAPTURE_SCROLLS + 1);
+    const yPositions = allYPositions.slice(0, maxVerticalTiles);
 
     for (const y of yPositions) {
       for (const x of xPositions) {
@@ -794,7 +829,9 @@ async function captureFullPageScreenshot(tabId) {
       screenshotWidth: canvas.width,
       screenshotHeight: canvas.height,
       screenshotScale: scale,
-      screenshotCaptureMode: "scrolling-stitching"
+      screenshotCaptureMode: "scrolling-stitching",
+      screenshotScrollLimit: MAX_FULLPAGE_CAPTURE_SCROLLS,
+      screenshotWasScrollLimited: allYPositions.length > yPositions.length
     };
   } finally {
     await api.tabs.sendMessage(tabId, {
@@ -990,7 +1027,9 @@ async function scanTab(tabId, url, options = {}) {
     pagePayload = await collectPagePayload(tabId, url);
   } catch (error) {
     lookup = await lookupPromise;
-    const nextState = buildErrorState(url, `Cannot read page DOM: ${error.message}`, { lookup });
+    const nextState = lookup?.status === "complete" && lookup.found
+      ? buildLookupRiskState(url, lookup, `Cannot read page DOM: ${error.message}`)
+      : buildErrorState(url, `Cannot read page DOM: ${error.message}`, { lookup });
     if (tabTokens.get(tabId) === scanToken) {
       await setTabState(tabId, nextState);
     }
@@ -999,7 +1038,9 @@ async function scanTab(tabId, url, options = {}) {
 
   if (!pagePayload?.sourceUrl || (!pagePayload.html && !pagePayload.htmlGzipBase64)) {
     lookup = await lookupPromise;
-    const nextState = buildErrorState(url, "Page snapshot was empty or incomplete.", { lookup });
+    const nextState = lookup?.status === "complete" && lookup.found
+      ? buildLookupRiskState(url, lookup, "Page snapshot was empty or incomplete.")
+      : buildErrorState(url, "Page snapshot was empty or incomplete.", { lookup });
     if (tabTokens.get(tabId) === scanToken) {
       await setTabState(tabId, nextState);
     }
@@ -1030,7 +1071,11 @@ async function scanTab(tabId, url, options = {}) {
     });
   } catch (error) {
     lookup = lookup || await lookupPromise;
-    const nextState = buildErrorState(url, `Cannot reach scanner API: ${error.message}`, { lookup });
+    const nextState = lookup?.status === "complete" && lookup.found
+      ? buildLookupRiskState(url, lookup, `Cannot reach scanner API: ${error.message}`, {
+          pageContext: pagePayload?.pageContext || null
+        })
+      : buildErrorState(url, `Cannot reach scanner API: ${error.message}`, { lookup });
     if (tabTokens.get(tabId) === scanToken) {
       await setTabState(tabId, nextState);
     }
@@ -1042,21 +1087,27 @@ async function scanTab(tabId, url, options = {}) {
   }
 
   if (!response.ok || !payload.result) {
-    const nextState = buildErrorState(
-      url,
-      payload.error || `Scanner API failed with ${response.status}`,
-      { lookup: lookup || null }
-    );
+    const scannerError = payload.error || `Scanner API failed with ${response.status}`;
+    const nextState = lookup?.status === "complete" && lookup.found
+      ? buildLookupRiskState(url, lookup || null, scannerError, {
+          pageContext: pagePayload?.pageContext || null
+        })
+      : buildErrorState(
+          url,
+          scannerError,
+          { lookup: lookup || null }
+        );
     await setTabState(tabId, nextState);
     return nextState;
   }
 
   const bypass = getBypassForTab(tabId, url);
   const rememberedDecision = getUserSiteDecision(url);
+  const summary = applyLookupRiskToSummary(summarizeResult(payload.result), lookup || null);
   const nextState = applyRememberedDecision({
     status: "ready",
     url,
-    summary: summarizeResult(payload.result),
+    summary,
     rawResult: payload.result,
     timings: payload.timings || {},
     pageContext: pagePayload.pageContext || null,
@@ -1104,21 +1155,11 @@ async function leaveHighRiskPage(tabId) {
   if (!tabId) {
     return { ok: false, error: "No active tab." };
   }
-
-  if (typeof api.tabs.goBack === "function") {
-    try {
-      await api.tabs.goBack(tabId);
-      return { ok: true, action: "back" };
-    } catch (error) {
-      // Fall through to a safe blank page when the tab has no back history.
-    }
-  }
-
-  await api.tabs.update(tabId, { url: "about:blank" });
-  return { ok: true, action: "blank" };
+  await api.tabs.update(tabId, { url: "https://www.google.com" });
+  return { ok: true, action: "google" };
 }
 
-api.runtime.onInstalled.addListener(async () => {
+api.runtime.onInstalled.addListener(async (details) => {
   const current = await api.storage.local.get(null);
   const protectionEnabled = typeof current.protectionEnabled === "boolean"
     ? current.protectionEnabled
@@ -1128,6 +1169,21 @@ api.runtime.onInstalled.addListener(async () => {
     ...DEFAULT_SETTINGS,
     ...current
   });
+  const installReason = typeof api.runtime.OnInstalledReason === "object"
+    ? api.runtime.OnInstalledReason.INSTALL
+    : "install";
+  const isFreshInstall = details?.reason === installReason || !current._surfphishInstalled;
+  if (isFreshInstall) {
+    await api.storage.local.set({
+      protectionEnabled: false,
+      showInstallProtectionPrompt: true,
+      _surfphishInstalled: true
+    });
+    if (typeof api.action?.openPopup === "function") {
+      await api.action.openPopup().catch(() => {});
+    }
+    return;
+  }
   if (protectionEnabled !== current.protectionEnabled) {
     await api.storage.local.set({ protectionEnabled });
   }

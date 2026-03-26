@@ -5,6 +5,8 @@ let root;
 let shadow;
 let currentState = null;
 let captureUiState = null;
+let bannerAutoHideTimer = null;
+const HIGH_RISK_BANNER_AUTOHIDE_MS = 10000;
 let currentDisplayOptions = {
     showBanner: true,
     blockHighRiskInterstitial: false,
@@ -95,6 +97,22 @@ function ensureUi() {
         letter-spacing: 0.12em;
         text-transform: uppercase;
         color: var(--ps-muted);
+      }
+      .danger-mark {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(185, 28, 28, 0.16), rgba(239, 68, 68, 0.28));
+        border: 1px solid rgba(185, 28, 28, 0.24);
+        color: var(--ps-danger);
+        box-shadow: 0 12px 24px rgba(185, 28, 28, 0.16);
+      }
+      .danger-mark svg {
+        width: 18px;
+        height: 18px;
       }
       .dot {
         width: 8px;
@@ -245,10 +263,19 @@ function ensureUi() {
         background: var(--ps-ink);
         color: var(--ps-surface);
       }
+      .dialog-button.success {
+        background: linear-gradient(135deg, #0f766e, #34d399);
+        color: #f4fffb;
+      }
       .dialog-button.secondary {
         background: var(--ps-soft);
         color: var(--ps-ink);
         border: 1px solid var(--ps-line);
+      }
+      .dialog-button.danger {
+        background: linear-gradient(135deg, #b91c1c, #ef4444);
+        color: #fff7f7;
+        box-shadow: 0 16px 28px rgba(185, 28, 28, 0.22);
       }
       .dialog-button:disabled {
         opacity: 0.55;
@@ -383,7 +410,17 @@ function ensureUi() {
     <div class="banner-shell hidden" id="bannerShell">
       <section class="card state-medium" id="card">
         <div class="row">
-          <div class="eyebrow"><span class="dot"></span><span id="statusLabel">Risk</span></div>
+          <div class="eyebrow">
+            <span class="danger-mark" id="dangerMark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 3.5 21 20.5H3L12 3.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M12 9V13.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="12" cy="17" r="1.2" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="dot"></span>
+            <span id="statusLabel">Risk</span>
+          </div>
           <button class="close" id="closeButton" type="button" aria-label="Hide">&times;</button>
         </div>
         <h1 class="title" id="title">This page looks suspicious</h1>
@@ -417,8 +454,8 @@ function ensureUi() {
         <h2 id="consentTitle">Full Check</h2>
         <p id="consentBody">To continue, SurfPhish needs your permission to send this page's full data, including DOM and a full-page screenshot, for full inspection.</p>
         <div class="dialog-actions">
-          <button class="dialog-button primary" id="allowConsentButton" type="button">Allow</button>
-          <button class="dialog-button secondary" id="cancelConsentButton" type="button">Cancel</button>
+          <button class="dialog-button success" id="allowConsentButton" type="button">Allow</button>
+          <button class="dialog-button danger" id="cancelConsentButton" type="button">Cancel</button>
         </div>
         <p class="dialog-status" id="consentStatus"></p>
       </article>
@@ -456,7 +493,7 @@ function ensureUi() {
         </section>
         <div class="result-error hidden" id="resultErrorText"></div>
         <div class="dialog-actions">
-          <button class="dialog-button secondary" id="leaveResultActionButton" type="button">Leave this site</button>
+          <button class="dialog-button danger" id="leaveResultActionButton" type="button">Leave this site</button>
           <button class="dialog-button primary" id="closeResultActionButton" type="button">Close</button>
         </div>
       </article>
@@ -518,7 +555,27 @@ function showBanner() {
 }
 
 function hideBanner() {
+  clearBannerAutoHideTimer();
   shadow.getElementById("bannerShell").classList.add("hidden");
+}
+
+function clearBannerAutoHideTimer() {
+  if (!bannerAutoHideTimer) {
+    return;
+  }
+  window.clearTimeout(bannerAutoHideTimer);
+  bannerAutoHideTimer = null;
+}
+
+function scheduleBannerAutoHide(state) {
+  clearBannerAutoHideTimer();
+  if (String(state?.summary?.riskLevel || "").toUpperCase() !== "HIGH") {
+    return;
+  }
+  bannerAutoHideTimer = window.setTimeout(() => {
+    bannerAutoHideTimer = null;
+    shadow?.getElementById("bannerShell")?.classList.add("hidden");
+  }, HIGH_RISK_BANNER_AUTOHIDE_MS);
 }
 
 function showConsentOverlay(message = "") {
@@ -651,6 +708,7 @@ async function requestDetailedCheck(allowNow) {
 function renderBanner(state) {
   const lang = currentLanguage();
   const card = shadow.getElementById("card");
+  const dangerMark = shadow.getElementById("dangerMark");
   const statusLabel = shadow.getElementById("statusLabel");
   const title = shadow.getElementById("title");
   const subtitle = shadow.getElementById("subtitle");
@@ -665,6 +723,7 @@ function renderBanner(state) {
 
   card.className = "card";
   card.classList.add(`state-${String(summary.riskLevel || "medium").toLowerCase()}`);
+  dangerMark.style.display = isBenign ? "none" : "inline-flex";
 
   statusLabel.textContent = riskLabel(lang, summary.riskLevel || "MEDIUM");
   title.textContent = isBenign
@@ -696,6 +755,7 @@ function renderBanner(state) {
   errorValue.textContent = Number(summary.reconstructionError || 0).toFixed(4);
   thresholdValue.textContent = Number(summary.threshold || 0).toFixed(4);
   showBanner();
+  scheduleBannerAutoHide(state);
 }
 
 function renderError(state) {

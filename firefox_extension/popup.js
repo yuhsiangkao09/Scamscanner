@@ -18,23 +18,52 @@ const marginValue = document.getElementById("marginValue");
 const lookupStatusValue = document.getElementById("lookupStatusValue");
 const lookupMatchesValue = document.getElementById("lookupMatchesValue");
 const falsePositiveButton = document.getElementById("falsePositiveButton");
+const whitelistButton = document.getElementById("whitelistButton");
 const reportButton = document.getElementById("reportButton");
 const protectionSummary = document.getElementById("protectionSummary");
 const protectionToggleButton = document.getElementById("protectionToggleButton");
+const installPromptPanel = document.getElementById("installPromptPanel");
 
 let activeTab = null;
 let currentLanguage = DEFAULT_UI_LANGUAGE;
 let currentState = null;
 let protectionEnabled = false;
+let showInstallProtectionPrompt = false;
+
+function setPopupTone(tone) {
+  document.body.classList.remove("tone-benign", "tone-high");
+  if (tone === "benign") {
+    document.body.classList.add("tone-benign");
+    return;
+  }
+  if (tone === "high") {
+    document.body.classList.add("tone-high");
+  }
+}
+
+function setButtonTone(button, tone) {
+  button.classList.remove("button-allow", "button-disallow");
+  if (tone === "allow") {
+    button.classList.add("button-allow");
+    return;
+  }
+  if (tone === "disallow") {
+    button.classList.add("button-disallow");
+  }
+}
 
 function setActionVariant(button, variant) {
-  button.classList.remove("ghost", "action-danger", "action-safe", "action-undo");
+  button.classList.remove("ghost", "action-danger", "action-safe", "action-undo", "action-whitelist");
   if (variant === "danger") {
     button.classList.add("action-danger");
     return;
   }
   if (variant === "safe") {
     button.classList.add("action-safe");
+    return;
+  }
+  if (variant === "whitelist") {
+    button.classList.add("action-whitelist");
     return;
   }
   button.classList.add("ghost", "action-undo");
@@ -47,6 +76,11 @@ function applyStaticText() {
   document.getElementById("brandHeading").textContent = t(currentLanguage, "brandName");
   document.getElementById("rescanButton").textContent = t(currentLanguage, "popupRescan");
   document.getElementById("protectionLabel").textContent = t(currentLanguage, "popupProtectionTitle");
+  document.getElementById("installPromptLabel").textContent = t(currentLanguage, "popupInstallPromptLabel");
+  document.getElementById("installPromptTitle").textContent = t(currentLanguage, "popupInstallPromptTitle");
+  document.getElementById("installPromptBody").textContent = t(currentLanguage, "popupInstallPromptBody");
+  document.getElementById("installAllowButton").textContent = t(currentLanguage, "popupProtectionAllow");
+  document.getElementById("installDisallowButton").textContent = t(currentLanguage, "popupProtectionDisallow");
   document.getElementById("riskLabelText").textContent = t(currentLanguage, "popupMetricRiskLevel");
   document.getElementById("scoreLabelText").textContent = t(currentLanguage, "popupMetricPhishingScore");
   document.getElementById("errorLabelText").textContent = t(currentLanguage, "popupMetricReconError");
@@ -57,6 +91,7 @@ function applyStaticText() {
   document.getElementById("lookupStatusLabelText").textContent = t(currentLanguage, "popupDetailLookupStatus");
   document.getElementById("lookupMatchesLabelText").textContent = t(currentLanguage, "popupDetailLookupMatches");
   document.getElementById("falsePositiveButton").textContent = t(currentLanguage, "popupActionFalsePositive");
+  document.getElementById("whitelistButton").textContent = t(currentLanguage, "popupActionWhitelist");
   document.getElementById("reportButton").textContent = t(currentLanguage, "popupActionReport");
   document.getElementById("fullCheckButton").textContent = t(currentLanguage, "bannerActionDetailedCheck");
   document.getElementById("optionsButton").textContent = t(currentLanguage, "popupSettings");
@@ -71,7 +106,12 @@ function renderProtectionControls() {
   protectionToggleButton.textContent = protectionEnabled
     ? t(currentLanguage, "popupProtectionDisallow")
     : t(currentLanguage, "popupProtectionAllow");
+  setButtonTone(protectionToggleButton, protectionEnabled ? "disallow" : "allow");
   document.getElementById("rescanButton").disabled = !protectionEnabled;
+}
+
+function renderInstallPrompt() {
+  installPromptPanel.classList.toggle("hidden", !showInstallProtectionPrompt);
 }
 
 function setStatus(message, url = "") {
@@ -98,6 +138,7 @@ function renderReady(state) {
   currentState = state;
   const summary = state.summary;
   const isHighRisk = summary.riskLevel === "HIGH";
+  const isDangerTone = Boolean(summary.isPhishing || isHighRisk);
   const isMarkedSafe = Boolean(state.decision?.markedSafe || state.feedback?.falsePositiveReportedAt);
   const isReportedPhishing = Boolean(state.feedback?.siteReportedAt);
   const detailedCheck = state.detailedCheck || {};
@@ -105,13 +146,17 @@ function renderReady(state) {
   details.classList.remove("hidden");
   fullCheckActions.classList.remove("hidden");
   falsePositiveButton.hidden = !isHighRisk;
+  whitelistButton.hidden = !isHighRisk;
   falsePositiveButton.disabled = false;
+  whitelistButton.disabled = false;
   falsePositiveButton.textContent = isMarkedSafe
     ? t(currentLanguage, "popupActionUndoFalsePositive")
     : t(currentLanguage, "popupActionFalsePositive");
   setActionVariant(falsePositiveButton, isMarkedSafe ? "undo" : "safe");
+  whitelistButton.textContent = t(currentLanguage, "popupActionWhitelist");
+  setActionVariant(whitelistButton, "whitelist");
   reportButton.hidden = isHighRisk;
-  actions.classList.toggle("hidden", falsePositiveButton.hidden && reportButton.hidden);
+  actions.classList.toggle("hidden", falsePositiveButton.hidden && whitelistButton.hidden && reportButton.hidden);
   reportButton.disabled = false;
   reportButton.textContent = isReportedPhishing
     ? t(currentLanguage, "popupActionUndoReport")
@@ -138,6 +183,7 @@ function renderReady(state) {
   const lookupSuffix = lookup?.status === "complete" && lookup.found
     ? ` ${t(currentLanguage, "popupStatusLookupMatched", { count: String(lookup.matchCount || 0) })}`
     : "";
+  setPopupTone(isDangerTone ? "high" : "benign");
   setStatus(
     `${baseStatus}${lookupSuffix}`.trim(),
     state.url
@@ -159,6 +205,7 @@ function renderReady(state) {
 
 function renderWhitelisted(state) {
   currentState = state;
+  setPopupTone("benign");
   metrics.classList.add("hidden");
   details.classList.add("hidden");
   fullCheckActions.classList.add("hidden");
@@ -168,6 +215,7 @@ function renderWhitelisted(state) {
 
 function renderError(state) {
   currentState = state;
+  setPopupTone("high");
   metrics.classList.add("hidden");
   details.classList.add("hidden");
   fullCheckActions.classList.add("hidden");
@@ -177,6 +225,7 @@ function renderError(state) {
 
 function renderScanning(url) {
   currentState = null;
+  setPopupTone(null);
   metrics.classList.add("hidden");
   details.classList.add("hidden");
   fullCheckActions.classList.add("hidden");
@@ -189,10 +238,14 @@ async function refreshState() {
   activeTab = tab || null;
   const protectionStatus = await api.runtime.sendMessage({ type: "surfphish:get-protection-status" });
   protectionEnabled = Boolean(protectionStatus?.enabled);
+  const promptState = await api.storage.local.get({ showInstallProtectionPrompt: false });
+  showInstallProtectionPrompt = Boolean(promptState.showInstallProtectionPrompt);
   renderProtectionControls();
+  renderInstallPrompt();
 
   if (!activeTab || !/^https?:\/\//i.test(activeTab.url || "")) {
     currentState = null;
+    setPopupTone(null);
     metrics.classList.add("hidden");
     details.classList.add("hidden");
     fullCheckActions.classList.add("hidden");
@@ -203,6 +256,7 @@ async function refreshState() {
 
   if (!protectionEnabled) {
     currentState = null;
+    setPopupTone(null);
     metrics.classList.add("hidden");
     details.classList.add("hidden");
     fullCheckActions.classList.add("hidden");
@@ -274,6 +328,26 @@ protectionToggleButton.addEventListener("click", async () => {
   refreshState();
 });
 
+document.getElementById("installAllowButton").addEventListener("click", async () => {
+  await api.runtime.sendMessage({
+    type: "surfphish:set-protection-enabled",
+    enabled: true
+  });
+  showInstallProtectionPrompt = false;
+  await api.storage.local.set({ showInstallProtectionPrompt: false });
+  refreshState();
+});
+
+document.getElementById("installDisallowButton").addEventListener("click", async () => {
+  await api.runtime.sendMessage({
+    type: "surfphish:set-protection-enabled",
+    enabled: false
+  });
+  showInstallProtectionPrompt = false;
+  await api.storage.local.set({ showInstallProtectionPrompt: false });
+  refreshState();
+});
+
 document.getElementById("optionsButton").addEventListener("click", () => {
   api.runtime.openOptionsPage();
 });
@@ -305,6 +379,19 @@ document.getElementById("falsePositiveButton").addEventListener("click", async (
         source: "popup",
         tabId: activeTab.id
       });
+  if (response?.ok) {
+    refreshState();
+  }
+});
+
+document.getElementById("whitelistButton").addEventListener("click", async () => {
+  if (!activeTab?.id) {
+    return;
+  }
+  const response = await api.runtime.sendMessage({
+    type: "surfphish:add-url-to-whitelist",
+    tabId: activeTab.id
+  });
   if (response?.ok) {
     refreshState();
   }

@@ -2,7 +2,7 @@ const api = globalThis.browser ?? globalThis.chrome;
 const { DEFAULT_UI_LANGUAGE, normalizeUiLanguage, t } = globalThis.SurfPhishI18n;
 
 const DEFAULT_SETTINGS = {
-  apiBaseUrl: "http://127.0.0.1:8000",
+  apiBaseUrl: "https://7uc9we0gs0w6arve4ara.duckdns.org",
   scanTimeout: 15,
   autoScan: true,
   showBanner: true,

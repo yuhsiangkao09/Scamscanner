@@ -27,7 +27,7 @@ http://127.0.0.1:8000/api/scan/fetch-url
 Remote example:
 
 ```text
-https://your-api-domain/api/scan/fetch-url
+https://7uc9we0gs0w6arve4ara.duckdns.org/api/scan/fetch-url
 ```
 
 Method:
