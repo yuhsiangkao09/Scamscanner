@@ -1314,12 +1314,8 @@ api.runtime.onInstalled.addListener(async (details) => {
   if (isFreshInstall) {
     await api.storage.local.set({
       protectionEnabled: false,
-      showInstallProtectionPrompt: true,
       _surfphishInstalled: true
     });
-    if (typeof api.action?.openPopup === "function") {
-      await api.action.openPopup().catch(() => {});
-    }
     return;
   }
   if (protectionEnabled !== current.protectionEnabled) {

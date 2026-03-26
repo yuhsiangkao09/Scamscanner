@@ -55,18 +55,6 @@ body {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
-body.tone-benign {
-  background:
-    radial-gradient(circle at top left, rgba(20, 125, 95, 0.18), transparent 42%),
-    linear-gradient(180deg, #eef8f3, #e5f3eb);
-}
-
-body.tone-high {
-  background:
-    radial-gradient(circle at top left, rgba(180, 35, 24, 0.16), transparent 42%),
-    linear-gradient(180deg, #fff1f0, #fbe8e6);
-}
-
 .shell { padding: 16px; }
 
 .hero {
@@ -107,20 +95,6 @@ h1 {
   padding: 14px;
 }
 
-body.tone-benign #statusPanel {
-  border-color: rgba(20, 125, 95, 0.28);
-  background:
-    linear-gradient(180deg, rgba(20, 125, 95, 0.08), transparent 75%),
-    var(--surface);
-}
-
-body.tone-high #statusPanel {
-  border-color: rgba(180, 35, 24, 0.28);
-  background:
-    linear-gradient(180deg, rgba(180, 35, 24, 0.10), transparent 75%),
-    var(--surface);
-}
-
 body.tone-benign .status-line,
 body.tone-benign #riskValue {
   color: var(--safe);
@@ -130,37 +104,6 @@ body.tone-high .status-line,
 body.tone-high #riskValue,
 body.tone-high #scoreValue {
   color: var(--danger);
-}
-
-body.tone-benign .metric-card,
-body.tone-benign .detail-list {
-  border-color: rgba(20, 125, 95, 0.18);
-}
-
-body.tone-high .metric-card,
-body.tone-high .detail-list {
-  border-color: rgba(180, 35, 24, 0.18);
-}
-
-.install-prompt {
-  background:
-    linear-gradient(180deg, rgba(21, 94, 117, 0.12), transparent 72%),
-    var(--surface);
-}
-
-.install-prompt-title {
-  margin-top: 6px;
-}
-
-.install-prompt-copy {
-  margin-top: 10px;
-}
-
-.install-prompt-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
 }
 
 .guard-panel {
@@ -312,13 +255,8 @@ body.tone-high .detail-list {
   color: var(--ink);
 }
 
-.install-disallow {
-  border-color: rgba(180, 35, 24, 0.32);
-  color: var(--danger);
-  font-weight: 700;
-}
-
-.button-allow {
+button.primary.button-allow,
+button.ghost.button-allow {
   background: linear-gradient(135deg, var(--safe), #41c79b);
   border-color: transparent;
   color: var(--safe-ink);
@@ -326,7 +264,8 @@ body.tone-high .detail-list {
   box-shadow: 0 14px 26px rgba(20, 125, 95, 0.18);
 }
 
-.button-disallow {
+button.primary.button-disallow,
+button.ghost.button-disallow {
   background: linear-gradient(135deg, var(--danger), #e45d52);
   border-color: transparent;
   color: var(--danger-ink);

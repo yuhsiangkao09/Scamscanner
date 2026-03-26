@@ -124,6 +124,9 @@ function ensureUi() {
         font-size: 12px;
         line-height: 1.55;
       }
+      .gmail-helper.disabled {
+        color: var(--ps-muted);
+      }
       .gmail-check-button {
         background: linear-gradient(135deg, #0f766e, #34d399);
         color: #f4fffb;
@@ -131,6 +134,10 @@ function ensureUi() {
       }
       .gmail-check-button:disabled {
         opacity: 0.7;
+        cursor: default;
+        box-shadow: none;
+        background: linear-gradient(135deg, #64748b, #94a3b8);
+        color: #eef2f7;
       }
       .card {
         width: 320px;
@@ -1005,12 +1012,13 @@ function updateGmailAssistantUi() {
   }
   const gmailShell = shadow.getElementById("gmailShell");
   const gmailCheckButton = shadow.getElementById("gmailCheckButton");
+  const gmailHelper = shadow.getElementById("gmailHelper");
   if (!gmailShell || !gmailCheckButton) {
     return;
   }
 
   const payload = collectOpenGmailMessagePayload();
-  const shouldShow = Boolean(payload && currentDisplayOptions.protectionEnabled);
+  const shouldShow = Boolean(payload);
   gmailShell.classList.toggle("hidden", !shouldShow);
   if (!shouldShow) {
     if (emailCheckState.status !== "running") {
@@ -1024,10 +1032,19 @@ function updateGmailAssistantUi() {
   }
 
   const lang = currentLanguage();
-  gmailCheckButton.disabled = emailCheckState.status === "running";
-  gmailCheckButton.textContent = emailCheckState.status === "running"
-    ? t(lang, "emailCheckRunning")
-    : t(lang, "emailCheckAction");
+  const protectionEnabled = Boolean(currentDisplayOptions.protectionEnabled);
+  gmailCheckButton.disabled = emailCheckState.status === "running" || !protectionEnabled;
+  if (emailCheckState.status === "running") {
+    gmailCheckButton.textContent = t(lang, "emailCheckRunning");
+    gmailHelper.textContent = t(lang, "emailCheckHelper");
+    gmailHelper.classList.remove("disabled");
+    return;
+  }
+  gmailCheckButton.textContent = t(lang, "emailCheckAction");
+  gmailHelper.textContent = protectionEnabled
+    ? t(lang, "emailCheckHelper")
+    : t(lang, "emailCheckEnableProtection");
+  gmailHelper.classList.toggle("disabled", !protectionEnabled);
 }
 
 function setConsentBusy(isBusy, message = "") {

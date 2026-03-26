@@ -22,13 +22,11 @@ const whitelistButton = document.getElementById("whitelistButton");
 const reportButton = document.getElementById("reportButton");
 const protectionSummary = document.getElementById("protectionSummary");
 const protectionToggleButton = document.getElementById("protectionToggleButton");
-const installPromptPanel = document.getElementById("installPromptPanel");
 
 let activeTab = null;
 let currentLanguage = DEFAULT_UI_LANGUAGE;
 let currentState = null;
 let protectionEnabled = false;
-let showInstallProtectionPrompt = false;
 
 function setPopupTone(tone) {
   document.body.classList.remove("tone-benign", "tone-high");
@@ -76,11 +74,6 @@ function applyStaticText() {
   document.getElementById("brandHeading").textContent = t(currentLanguage, "brandName");
   document.getElementById("rescanButton").textContent = t(currentLanguage, "popupRescan");
   document.getElementById("protectionLabel").textContent = t(currentLanguage, "popupProtectionTitle");
-  document.getElementById("installPromptLabel").textContent = t(currentLanguage, "popupInstallPromptLabel");
-  document.getElementById("installPromptTitle").textContent = t(currentLanguage, "popupInstallPromptTitle");
-  document.getElementById("installPromptBody").textContent = t(currentLanguage, "popupInstallPromptBody");
-  document.getElementById("installAllowButton").textContent = t(currentLanguage, "popupProtectionAllow");
-  document.getElementById("installDisallowButton").textContent = t(currentLanguage, "popupProtectionDisallow");
   document.getElementById("riskLabelText").textContent = t(currentLanguage, "popupMetricRiskLevel");
   document.getElementById("scoreLabelText").textContent = t(currentLanguage, "popupMetricPhishingScore");
   document.getElementById("errorLabelText").textContent = t(currentLanguage, "popupMetricReconError");
@@ -108,10 +101,6 @@ function renderProtectionControls() {
     : t(currentLanguage, "popupProtectionAllow");
   setButtonTone(protectionToggleButton, protectionEnabled ? "disallow" : "allow");
   document.getElementById("rescanButton").disabled = !protectionEnabled;
-}
-
-function renderInstallPrompt() {
-  installPromptPanel.classList.toggle("hidden", !showInstallProtectionPrompt);
 }
 
 function setStatus(message, url = "") {
@@ -238,10 +227,7 @@ async function refreshState() {
   activeTab = tab || null;
   const protectionStatus = await api.runtime.sendMessage({ type: "surfphish:get-protection-status" });
   protectionEnabled = Boolean(protectionStatus?.enabled);
-  const promptState = await api.storage.local.get({ showInstallProtectionPrompt: false });
-  showInstallProtectionPrompt = Boolean(promptState.showInstallProtectionPrompt);
   renderProtectionControls();
-  renderInstallPrompt();
 
   if (!activeTab || !/^https?:\/\//i.test(activeTab.url || "")) {
     currentState = null;
@@ -325,26 +311,6 @@ protectionToggleButton.addEventListener("click", async () => {
   if (protectionEnabled && activeTab?.url) {
     renderScanning(activeTab.url);
   }
-  refreshState();
-});
-
-document.getElementById("installAllowButton").addEventListener("click", async () => {
-  await api.runtime.sendMessage({
-    type: "surfphish:set-protection-enabled",
-    enabled: true
-  });
-  showInstallProtectionPrompt = false;
-  await api.storage.local.set({ showInstallProtectionPrompt: false });
-  refreshState();
-});
-
-document.getElementById("installDisallowButton").addEventListener("click", async () => {
-  await api.runtime.sendMessage({
-    type: "surfphish:set-protection-enabled",
-    enabled: false
-  });
-  showInstallProtectionPrompt = false;
-  await api.storage.local.set({ showInstallProtectionPrompt: false });
   refreshState();
 });
 
