@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "SurfPhish",
+  "version": "0.1.0",
+  "description": "Scan the current page with the local SurfPhish backend and surface website risk details in Firefox.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "scripts": [
+      "i18n.js",
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "SurfPhish",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icons/shield.svg",
+      "96": "icons/shield.svg"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "48": "icons/shield.svg",
+    "96": "icons/shield.svg"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "i18n.js",
+        "content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "surfphish@snoozedog.local",
+      "strict_min_version": "121.0"
+    }
+  }
+}

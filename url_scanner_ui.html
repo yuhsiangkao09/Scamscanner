@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SurfPhish Admin Dashboard</title>
+  <style>
+    :root{
+      --bg:#f6f2ea;
+      --bg-top:#faf6ee;
+      --panel:#fffaf1;
+      --surface:#ffffff;
+      --surface-soft:rgba(255,255,255,.72);
+      --surface-strong:#fff;
+      --ink:#18231d;
+      --muted:#5b6a60;
+      --line:rgba(24,35,29,.12);
+      --accent:#b74f2a;
+      --accent-strong:#d27947;
+      --accent-soft:rgba(183,79,42,.08);
+      --accent-line:rgba(183,79,42,.28);
+      --good:#1e6b43;
+      --good-soft:rgba(30,107,67,.08);
+      --warn:#b57911;
+      --bad:#a1332f;
+      --bad-soft:rgba(161,51,47,.08);
+      --loading-track:rgba(24,35,29,.08);
+      --shadow:0 18px 45px rgba(24,35,29,.08)
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0b1014;
+        --bg-top:#121922;
+        --panel:#111820;
+        --surface:#18212b;
+        --surface-soft:#172029;
+        --surface-strong:#1c2631;
+        --ink:#edf3f8;
+        --muted:#9ba9b8;
+        --line:rgba(237,243,248,.10);
+        --accent:#f28b5b;
+        --accent-strong:#ffb07a;
+        --accent-soft:rgba(242,139,91,.12);
+        --accent-line:rgba(242,139,91,.26);
+        --good:#57c58d;
+        --good-soft:rgba(87,197,141,.14);
+        --warn:#f0c15c;
+        --bad:#f28b82;
+        --bad-soft:rgba(242,139,130,.14);
+        --loading-track:rgba(237,243,248,.08);
+        --shadow:0 24px 60px rgba(0,0,0,.32)
+      }
+    }
+    *{box-sizing:border-box} body{margin:0;background:
+      radial-gradient(circle at top left, rgba(242,139,91,.08), transparent 24%),
+      linear-gradient(180deg,var(--bg-top),var(--bg));
+      color:var(--ink);font-family:"Segoe UI",sans-serif}
+    .layout{width:min(1320px,calc(100% - 24px));margin:16px auto;display:grid;grid-template-columns:250px 1fr;gap:16px}
+    .sidebar,.panel{background:var(--panel);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}
+    .sidebar{padding:18px;position:sticky;top:16px;height:fit-content}
+    .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    h1,h2,h3,p{margin:0}
+    .brand{font-size:32px;line-height:1;letter-spacing:-.04em;margin-top:8px;font-family:Georgia,serif}
+    .copy{margin-top:10px;color:var(--muted);line-height:1.55;font-size:14px}
+    .nav{display:grid;gap:10px;margin-top:18px}
+    .nav button,.ghost,.primary{font:inherit;border-radius:16px;cursor:pointer}
+    .nav button{padding:12px 14px;text-align:left;border:1px solid var(--line);background:var(--surface-strong);color:var(--ink)}
+    .nav button.active{background:var(--accent-soft);border-color:var(--accent-line)}
+    .nav strong{display:block;font-size:14px}.nav span{display:block;color:var(--muted);font-size:12px;margin-top:4px;line-height:1.4}
+    .ghost{width:100%;padding:12px 14px;border:1px solid var(--line);background:var(--surface-strong);color:var(--ink);margin-top:16px}
+    .content{display:grid;gap:16px}
+    .hero{padding:22px}
+    .hero h1{font-size:44px;line-height:.96;letter-spacing:-.05em;font-family:Georgia,serif;margin:10px 0}
+    .hero p{max-width:760px;color:var(--muted);line-height:1.6}
+    .chips,.stats,.grid,.list,.details{display:grid;gap:12px}
+    .chips{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:16px}
+    .chip,.card,.row,.status{border:1px solid var(--line);background:var(--surface-soft);border-radius:16px;padding:14px}
+    .chip strong,.label{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+    .chip span,.value{display:block;margin-top:6px;font-weight:700}
+    .page{display:none;gap:16px}.page.active{display:grid}
+    .panel .body{padding:18px}
+    .title{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:12px}
+    .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .value{font-size:28px;letter-spacing:-.04em}
+    .risk-high .value{color:var(--bad)}.risk-medium .value{color:var(--warn)}.risk-low .value{color:var(--good)}
+    .grid{grid-template-columns:1fr 1fr}
+    .item{border:1px solid var(--line);background:var(--surface-soft);border-radius:16px;padding:14px;cursor:pointer}
+    .item.active{border-color:var(--accent-line);background:var(--accent-soft)}
+    .url{font-weight:700;word-break:break-all}.meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;color:var(--muted);font-size:12px}
+    .empty{padding:20px;border:1px dashed var(--line);border-radius:16px;color:var(--muted);text-align:center}
+    #page-reports .grid{align-items:start}
+    .report-groups{display:grid;gap:16px}
+    .report-group{display:grid;gap:12px}
+    .section-subtitle{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    #reportListPhishing,#reportListSafe,#reportDetail{min-height:320px;max-height:320px;overflow:auto;align-content:start}
+    .form{display:grid;gap:14px}
+    .urlrow{display:grid;grid-template-columns:1fr auto;gap:12px}
+    input[type="url"],input[type="number"]{width:100%;padding:14px 16px;border-radius:16px;border:1px solid var(--line);background:var(--surface-strong);color:var(--ink);font:inherit}
+    input[type="url"]::placeholder,input[type="number"]::placeholder{color:var(--muted)}
+    .primary{padding:0 18px;border:none;background:linear-gradient(135deg,var(--accent),var(--accent-strong));color:#fff8f1;font-weight:700}
+    .opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .toggle{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .toggle input{width:18px;height:18px}
+    .loading{height:4px;border-radius:999px;overflow:hidden;background:var(--loading-track);opacity:0}
+    .loading.active{opacity:1}.loading::after{content:"";display:block;width:35%;height:100%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:travel .9s linear infinite}
+    .status.ok{color:var(--good);background:var(--good-soft)} .status.error{color:var(--bad);background:var(--bad-soft)}
+    .kv{display:flex;justify-content:space-between;gap:12px}
+    pre{margin:0;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;color:var(--muted);font-size:12px;line-height:1.5}
+    a{color:var(--accent)}
+    @keyframes travel{from{transform:translateX(-120%)}to{transform:translateX(340%)}}
+    @media (max-width:1000px){.layout,.grid,.opts,.stats{grid-template-columns:1fr}.sidebar{position:static}.urlrow{grid-template-columns:1fr}#reportListPhishing,#reportListSafe,#reportDetail{min-height:auto;max-height:none;overflow:visible}}
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="eyebrow">Protected workspace</div>
+      <div class="brand">SurfPhish</div>
+      <p class="copy">Protected admin workspace for service status, user reports, and manual scans.</p>
+      <div class="nav">
+        <button class="active" data-page="overview"><strong>Overview</strong><span>Service health and recent activity</span></button>
+        <button data-page="reports"><strong>Reports</strong><span>User-submitted reports with stored HTML</span></button>
+        <button data-page="control"><strong>Control Room</strong><span>Protected manual scanning tools</span></button>
+      </div>
+      <form method="post" action="/logout"><button class="ghost" type="submit">Log out</button></form>
+    </aside>
+
+    <main class="content">
+      <section class="panel hero">
+        <div class="eyebrow">Administrator dashboard</div>
+        <h1 id="pageTitle">Overview</h1>
+        <p id="pageCopy">Monitor service health, scan activity, and user reports from one protected interface.</p>
+        <div id="configChips" class="chips"></div>
+      </section>
+
+      <section id="page-overview" class="page active">
+        <section class="panel"><div class="body">
+          <div class="title">Quick Status</div>
+          <div id="overviewStats" class="stats"></div>
+        </div></section>
+        <section class="grid">
+          <article class="panel"><div class="body"><div class="title">Recent Scans</div><div id="history" class="list"></div></div></article>
+          <article class="panel"><div class="body"><div class="title">Service Event Log</div><div id="events" class="list"></div></div></article>
+        </section>
+      </section>
+
+      <section id="page-reports" class="page">
+        <section class="grid">
+          <article class="panel"><div class="body"><div class="title">User Reports</div><div class="report-groups"><section class="report-group"><div class="section-subtitle">Reported As Phishing</div><div id="reportListPhishing" class="list"></div></section><section class="report-group"><div class="section-subtitle">Reported As Not Phishing</div><div id="reportListSafe" class="list"></div></section></div></div></article>
+          <article class="panel"><div class="body"><div class="title">Report Detail</div><div id="reportDetail" class="details"></div></div></article>
+        </section>
+      </section>
+
+      <section id="page-control" class="page">
+        <section class="grid">
+          <article class="panel"><div class="body">
+            <div class="title">Scan URL</div>
+            <form id="scanForm" class="form">
+              <div class="urlrow">
+                <input id="urlInput" type="url" placeholder="https://example.com" required>
+                <button id="scanButton" class="primary" type="submit">Run Live Scan</button>
+              </div>
+              <div class="opts">
+                <label class="card toggle"><span><strong>Debug details</strong><br><small>Include preprocess and model internals</small></span><input id="debugInput" type="checkbox" checked></label>
+                <label class="card toggle"><span><strong>Insecure fetch</strong><br><small>Disable TLS verification when needed</small></span><input id="insecureInput" type="checkbox"></label>
+                <label class="card"><span class="label">Timeout</span><input id="timeoutInput" type="number" min="3" max="60" value="15"></label>
+              </div>
+              <div id="loadingBar" class="loading"></div>
+              <div id="status" class="status">Service is ready. Submit a URL to begin.</div>
+            </form>
+          </div></article>
+          <article class="panel"><div class="body"><div class="title">Latest Verdict</div><div id="verdictStats" class="stats"></div></div></article>
+        </section>
+        <section class="grid">
+          <article class="panel"><div class="body"><div class="title">Timing</div><div id="timings" class="list"></div></div></article>
+          <article class="panel"><div class="body"><div class="title">Decision Signals</div><div id="signals" class="details"></div></div></article>
+        </section>
+        <section class="grid">
+          <article class="panel"><div class="body"><div class="title">Analysis Notes</div><div id="notes" class="details"></div></div></article>
+          <article class="panel"><div class="body"><div class="title">Debug Snapshot</div><div id="debug" class="details"></div></div></article>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const pages={overview:document.getElementById("page-overview"),reports:document.getElementById("page-reports"),control:document.getElementById("page-control")};
+    const pageMeta={overview:["Overview","Monitor service health, scan activity, and user reports from one protected interface."],reports:["Reports","Inspect user reports, stored HTML snapshots, and the captured page context."],control:["Control Room","Run protected manual scans and inspect model output in detail."]};
+    const navButtons=[...document.querySelectorAll(".nav button[data-page]")];
+    const pageTitle=document.getElementById("pageTitle"),pageCopy=document.getElementById("pageCopy"),configChips=document.getElementById("configChips");
+    const overviewStats=document.getElementById("overviewStats"),historyEl=document.getElementById("history"),eventsEl=document.getElementById("events"),reportListPhishingEl=document.getElementById("reportListPhishing"),reportListSafeEl=document.getElementById("reportListSafe"),reportDetailEl=document.getElementById("reportDetail");
+    const scanForm=document.getElementById("scanForm"),scanButton=document.getElementById("scanButton"),urlInput=document.getElementById("urlInput"),debugInput=document.getElementById("debugInput"),insecureInput=document.getElementById("insecureInput"),timeoutInput=document.getElementById("timeoutInput"),loadingBar=document.getElementById("loadingBar"),statusEl=document.getElementById("status"),verdictStats=document.getElementById("verdictStats"),timingsEl=document.getElementById("timings"),signalsEl=document.getElementById("signals"),notesEl=document.getElementById("notes"),debugEl=document.getElementById("debug");
+    let latestConfig=null,latestHistory=[],latestEvents=[],latestReports=[],activeReportId=null;
+
+    function switchPage(name){const key=pages[name]?name:"overview";Object.entries(pages).forEach(([k,v])=>v.classList.toggle("active",k===key));navButtons.forEach(b=>b.classList.toggle("active",b.dataset.page===key));pageTitle.textContent=pageMeta[key][0];pageCopy.textContent=pageMeta[key][1];location.hash=key}
+    navButtons.forEach(b=>b.addEventListener("click",()=>switchPage(b.dataset.page)));
+    function escapeHtml(value){return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}
+    function empty(msg){return `<div class="empty">${escapeHtml(msg)}</div>`}
+    function chip(label,value){return `<div class="chip"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`}
+    function stat(label,value,klass=""){return `<div class="stat ${escapeHtml(klass)}"><span class="label">${escapeHtml(label)}</span><span class="value">${escapeHtml(value)}</span></div>`}
+    function row(label,value,options={}){const rendered=options.html?String(value??"-"):escapeHtml(value??"-");return `<div class="row kv"><span>${escapeHtml(label)}</span><strong>${rendered}</strong></div>`}
+    function item(url,meta,time,id,active=false){const metaHtml=(Array.isArray(meta)?meta:[]).map(part=>`<span>${escapeHtml(part)}</span>`).join("");const timeHtml=time?`<div class="meta"><span>${escapeHtml(time)}</span></div>`:"";return `<article class="item${active?" active":""}" ${id?`data-id="${escapeHtml(id)}"`:""}><div class="url">${escapeHtml(url)}</div><div class="meta">${metaHtml}</div>${timeHtml}</article>`}
+    function riskClass(level){const n=(level||"").toLowerCase();return n==="high"?"risk-high":n==="medium"?"risk-medium":"risk-low"}
+    function feedbackKindLabel(kind){return kind==="false_positive"?"reported as not phishing":kind==="report_site"?"reported as phishing":(kind||"unknown").replaceAll("_"," ")}
+    function setStatus(message,kind=""){statusEl.textContent=message;statusEl.className=kind?`status ${kind}`:"status"}
+    function setLoading(active){loadingBar.classList.toggle("active",active);scanButton.disabled=active;scanButton.textContent=active?"Scanning...":"Run Live Scan"}
+    function maskPath(value){const text=String(value??"");const parts=text.split(/[/\\\\]+/).filter(Boolean);return parts.length?parts[parts.length-1]:text}
+
+    function renderConfig(config){latestConfig=config;configChips.innerHTML=[chip("Model",config.model_name),chip("Threshold",Number(config.threshold).toFixed(6)),chip("Device",config.device),chip("Mode",config.with_domain?"with-domain":"without-domain"),chip("TLS",config.verify_tls?"verified":"insecure")].join("");timeoutInput.value=config.default_timeout;insecureInput.checked=!config.verify_tls;renderOverviewStats()}
+    function renderOverviewStats(){overviewStats.innerHTML=[stat("Model",latestConfig?.model_name||"-"),stat("Threshold",latestConfig?Number(latestConfig.threshold).toFixed(6):"-"),stat("Recent Scans",String(latestHistory.length)),stat("User Reports",String(latestReports.length))].join("")}
+    function renderHistory(items){latestHistory=items;renderOverviewStats();historyEl.innerHTML=items.length?items.map(it=>item(it.url,[it.prediction?.toUpperCase?.()||"-",`risk ${it.risk_level}`,`score ${it.phishing_score.toFixed(4)}`,`${it.total_ms.toFixed(1)} ms`],it.scanned_at)).join(""):empty("No scans yet.")}
+    function renderEvents(items){latestEvents=items;eventsEl.innerHTML=items.length?items.map(it=>{const req=it.request||{},err=it.error||null;return item(req.url||"-",[it.status||"unknown",req.input_mode||"-",`${req.timeout_seconds||"-"}s`,String(it.http_status??"-"),err?err.type:"ok"],it.timestamp)}).join(""):empty("No service events yet.")}
+    function bindReportClicks(){[...document.querySelectorAll("#reportListPhishing [data-id], #reportListSafe [data-id]")].forEach(n=>n.addEventListener("click",()=>loadReportDetail(n.dataset.id)))}
+    function renderReportList(items){latestReports=items;renderOverviewStats();const phishingReports=items.filter(it=>it.kind==="report_site");const safeReports=items.filter(it=>it.kind==="false_positive");const renderGroup=(groupItems,emptyMessage)=>groupItems.length?groupItems.map(it=>{const s=it.summary||{},pc=it.page_context||{};return item(it.url||"-",[feedbackKindLabel(it.kind),it.source||"-",`risk ${s.riskLevel||s.risk_level||"-"}`,`forms ${pc.formCount??"-"}`],it.timestamp,it.id,it.id===activeReportId)}).join(""):empty(emptyMessage);reportListPhishingEl.innerHTML=renderGroup(phishingReports,"No sites have been reported as phishing yet.");reportListSafeEl.innerHTML=renderGroup(safeReports,"No sites have been reported as not phishing yet.");bindReportClicks();if(!activeReportId&&items[0]?.id)loadReportDetail(items[0].id);else if(!items.length)reportDetailEl.innerHTML=empty("Select a report to inspect its stored HTML, page context, and risk summary.")}
+    function renderReportDetail(item){activeReportId=item.id||null;renderReportList(latestReports);const s=item.summary||{},pc=item.page_context||{},hi=item.html_info||{};const htmlLink=item.id&&hi.stored_path?`<a href="/api/feedback/${encodeURIComponent(item.id)}/html" target="_blank" rel="noopener noreferrer">Open stored HTML</a>`:"-";reportDetailEl.innerHTML=[row("Report type",feedbackKindLabel(item.kind)),row("Source",item.source||"-"),row("Risk level",s.riskLevel||s.risk_level||"-"),row("Phishing score",String(s.phishingPercent??s.phishing_score??"-")),row("Prediction",s.prediction||"-"),row("Title",pc.title||"-"),row("Visible text chars",String(pc.visibleTextChars??"-")),row("Node count",String(pc.nodeCount??"-")),row("Form count",String(pc.formCount??"-")),row("Iframe count",String(pc.iframeCount??"-")),row("Stored HTML",htmlLink,{html:true}),row("Stored path",hi.stored_path||"-"),row("HTML chars",String(hi.html_chars??"-")),`<div class="card"><div class="label">HTML Preview</div><pre>${escapeHtml(hi.preview||"No HTML snapshot was stored for this report.")}</pre></div>`].join("")}
+    function renderVerdict(result){verdictStats.innerHTML=[stat("Prediction",result.prediction.toUpperCase()),stat("Risk Level",result.risk_level,riskClass(result.risk_level)),stat("Phishing Score",result.phishing_score.toFixed(4),riskClass(result.risk_level)),stat("Error-only",result.error_only_prediction.toUpperCase())].join("")}
+    function renderTimings(t){timingsEl.innerHTML=[row("Total",`${t.total_ms.toFixed(1)} ms`),row("Fetch + preprocess",`${t.preprocess_ms.toFixed(1)} ms`),row("Inference",`${t.inference_ms.toFixed(1)} ms`)].join("")}
+    function renderSignals(result){const margin=result.model_debug&&typeof result.model_debug.threshold_margin==="number"?result.model_debug.threshold_margin.toFixed(6):"-";signalsEl.innerHTML=[row("Reconstruction error",result.reconstruction_error.toFixed(6)),row("Threshold benign score",result.threshold_benign_score.toFixed(4)),row("Classifier benign score",result.classifier_benign_score.toFixed(4)),row("Threshold margin",margin)].join("")}
+    function renderNotes(result){const notes=Array.isArray(result.analysis_notes)?result.analysis_notes:[];notesEl.innerHTML=notes.length?notes.map(n=>row("Note",n)).join(""):empty("No additional interpretation notes for this scan.")}
+    function renderDebug(result){const parts=[];for(const [k,v] of Object.entries(result.preprocess_debug||{})){const value=k==="raw_html_path"?maskPath(v):String(v);parts.push(row(`preprocess.${k}`,value))}for(const [k,v] of Object.entries(result.model_debug||{}))parts.push(row(`model.${k}`,String(v)));debugEl.innerHTML=parts.length?parts.join(""):empty("This scan was run without debug details.")}
+
+    async function fetchConfig(){const r=await fetch("/api/config");renderConfig(await r.json())}
+    async function fetchHistory(){const r=await fetch("/api/history");const p=await r.json();renderHistory(p.items||[])}
+    async function fetchEvents(){const r=await fetch("/api/events?limit=30");const p=await r.json();renderEvents(p.items||[])}
+    async function fetchReports(){const r=await fetch("/api/feedback?limit=30");const p=await r.json();activeReportId=null;renderReportList(p.items||[])}
+    async function loadReportDetail(id){const r=await fetch(`/api/feedback/${encodeURIComponent(id)}`);const p=await r.json();if(!r.ok){reportDetailEl.innerHTML=empty(p.error||"Failed to load report.");return}renderReportDetail(p.item)}
+
+    async function runScan(event){event.preventDefault();const url=urlInput.value.trim();if(!url){setStatus("Please enter a URL to scan.","error");return}setLoading(true);setStatus("Fetching page, building graph, and running inference...");try{const r=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,debug:debugInput.checked,insecure:insecureInput.checked,timeout:Number(timeoutInput.value||15)})});const p=await r.json();if(!r.ok)throw new Error(p.error||"Scan failed");renderVerdict(p.result);renderTimings(p.timings);renderSignals(p.result);renderNotes(p.result);renderDebug(p.result);setStatus(`Latest scan complete in ${p.timings.total_ms.toFixed(1)} ms.`,"ok");await fetchHistory();await fetchEvents()}catch(error){setStatus(error.message||"Scan failed","error")}finally{setLoading(false)}}
+
+    scanForm.addEventListener("submit",runScan);
+    switchPage(location.hash.replace("#","")||"overview");
+    fetchConfig();fetchHistory();fetchEvents();fetchReports();
+  </script>
+</body>
+</html>

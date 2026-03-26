@@ -1,0 +1,440 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import secrets
+from pathlib import Path
+from urllib.parse import parse_qs
+
+import requests
+from fastapi import APIRouter, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
+from .auth import (
+    SESSION_COOKIE_NAME,
+    create_session_token,
+    is_admin_authenticated,
+    render_login_html,
+    require_admin_api,
+    verify_password,
+)
+from .scanner import read_event_log_tail
+from .utils import compact_text, decode_submitted_html, decode_submitted_screenshot
+
+
+router = APIRouter()
+
+
+def _scanner_service(request: Request):
+    return request.app.state.scanner_service
+
+
+@router.get("/", include_in_schema=False)
+async def handle_root(request: Request):
+    target = "/dashboard" if is_admin_authenticated(request) else "/login"
+    return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def handle_login_get(request: Request):
+    if is_admin_authenticated(request):
+        return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+    return HTMLResponse(render_login_html())
+
+
+@router.post("/login", include_in_schema=False)
+async def handle_login_post(request: Request):
+    form_data = parse_qs((await request.body()).decode("utf-8", errors="ignore"))
+    password = (form_data.get("password") or [""])[0]
+    auth = request.app.state.admin_auth
+
+    if not verify_password(password, auth["password_record"]):
+        return HTMLResponse(
+            render_login_html("Invalid administrator password."),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    token = create_session_token()
+    auth["sessions"].add(token)
+    response = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        httponly=True,
+        samesite="strict",
+        secure=False,
+        path="/",
+    )
+    return response
+
+
+@router.post("/logout", include_in_schema=False)
+async def handle_logout(request: Request):
+    token = request.cookies.get(SESSION_COOKIE_NAME, "")
+    if token:
+        request.app.state.admin_auth["sessions"].discard(token)
+    response = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return response
+
+
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+async def handle_dashboard(request: Request):
+    if not is_admin_authenticated(request):
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    return HTMLResponse(request.app.state.ui_html)
+
+
+@router.get("/health")
+async def handle_health(request: Request):
+    service = _scanner_service(request)
+    config = service.config_payload()
+    return {
+        "status": "ok",
+        "model": config["model_name"],
+        "device": config["device"],
+    }
+
+
+@router.get("/api/config")
+async def handle_config(request: Request):
+    require_admin_api(request)
+    return _scanner_service(request).config_payload()
+
+
+@router.get("/api/history")
+async def handle_history(request: Request):
+    require_admin_api(request)
+    items = await _scanner_service(request).get_history()
+    return {"items": items}
+
+
+@router.get("/api/events")
+async def handle_events(request: Request):
+    require_admin_api(request)
+    service = _scanner_service(request)
+    limit = int(request.query_params.get("limit", 40))
+    limit = max(1, min(limit, 200))
+    events = await asyncio.to_thread(read_event_log_tail, service.event_log_path, limit)
+    return {"items": events}
+
+
+@router.get("/api/feedback")
+async def handle_feedback_list(request: Request):
+    require_admin_api(request)
+    service = _scanner_service(request)
+    limit = int(request.query_params.get("limit", 40))
+    limit = max(1, min(limit, 200))
+    items = await service.get_feedback_reports(limit)
+    return {"items": items}
+
+
+@router.get("/api/feedback/{feedback_id}")
+async def handle_feedback_detail(feedback_id: str, request: Request):
+    require_admin_api(request)
+    item = await _scanner_service(request).get_feedback_report(feedback_id)
+    if not item:
+        return JSONResponse(
+            {"error": "Feedback report not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return {"item": item}
+
+
+@router.get("/api/feedback/{feedback_id}/html", response_class=HTMLResponse)
+async def handle_feedback_html(feedback_id: str, request: Request):
+    require_admin_api(request)
+    service = _scanner_service(request)
+    item = await service.get_feedback_report(feedback_id)
+    if not item:
+        return JSONResponse(
+            {"error": "Feedback report not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    html_info = item.get("html_info") or {}
+    stored_path = html_info.get("stored_path")
+    if not stored_path:
+        return JSONResponse(
+            {"error": "No stored HTML for this report"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    path = Path(stored_path)
+    if not path.exists():
+        return JSONResponse(
+            {"error": "Stored HTML file is missing"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return HTMLResponse(path.read_text(encoding="utf-8", errors="ignore"))
+
+
+@router.post("/api/feedback")
+async def handle_feedback_submit(request: Request):
+    service = _scanner_service(request)
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    kind = str(payload.get("kind", "")).strip().lower()
+    url = str(payload.get("url", "")).strip()
+    source = str(payload.get("source", "")).strip() or "extension"
+    page_context = payload.get("page_context")
+    summary = payload.get("summary")
+    notes = payload.get("notes")
+    source_url = str(payload.get("source_url", "")).strip() or url
+
+    if kind not in {"false_positive", "report_site"}:
+        return JSONResponse(
+            {"error": "Unsupported feedback kind"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    if not url:
+        return JSONResponse(
+            {"error": "Missing feedback URL"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        html = decode_submitted_html(payload)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Invalid compressed HTML payload: {exc}"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    html_info = None
+    feedback_id = secrets.token_urlsafe(9)
+    if isinstance(html, str) and html.strip():
+        html_path = await asyncio.to_thread(
+            service.save_feedback_html,
+            source_url,
+            html,
+            feedback_id,
+        )
+        html_info = {
+            "source_url": source_url,
+            "html_chars": len(html),
+            "stored_path": html_path,
+            "preview": compact_text(html, limit=1200),
+        }
+
+    record = service.build_feedback_record(
+        feedback_id=feedback_id,
+        kind=kind,
+        source=source,
+        url=url,
+        page_context=page_context,
+        summary=summary,
+        html_info=html_info,
+        notes=notes if isinstance(notes, list) else [],
+    )
+    await service.append_feedback_log(record)
+    return {"ok": True, "record": record}
+
+
+@router.post("/api/scan")
+async def handle_scan(request: Request):
+    service = _scanner_service(request)
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    url = str(payload.get("url", "")).strip()
+    source_url = str(payload.get("source_url", "")).strip()
+    detail_level = str(payload.get("detail_level", "standard") or "standard").strip().lower()
+    debug = bool(payload.get("debug", False))
+    insecure = payload.get("insecure")
+    timeout = payload.get("timeout", service.settings.timeout)
+    scan_timeout = service.settings.timeout if timeout is None else int(timeout)
+    scan_insecure = False if insecure is None else bool(insecure)
+
+    try:
+        html = decode_submitted_html(payload)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Invalid compressed HTML payload: {exc}"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        screenshot_payload = decode_submitted_screenshot(payload)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Invalid screenshot payload: {exc}"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    has_html = isinstance(html, str) and html.strip() != ""
+    if not url and not has_html:
+        return JSONResponse(
+            {"error": "Missing URL or HTML input"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    request_url = source_url if has_html else url
+    input_mode = "html" if has_html else "url"
+    service.log_received_payload(
+        input_mode=input_mode,
+        request_url=request_url,
+        source_url=source_url,
+        html_content=html,
+        payload=payload,
+        debug=debug,
+        insecure=scan_insecure,
+        timeout=scan_timeout,
+    )
+
+    try:
+        if has_html:
+            result, timings = await service.scan_html(
+                html_content=html,
+                source_url=source_url,
+                debug=debug,
+            )
+        else:
+            result, timings = await service.scan(
+                url=url,
+                debug=debug,
+                insecure=insecure,
+                timeout=scan_timeout,
+            )
+
+        if screenshot_payload:
+            screenshot_artifact = await asyncio.to_thread(
+                service.save_scan_screenshot,
+                request_url or url or source_url or "unknown",
+                screenshot_payload["image_bytes"],
+                screenshot_payload["image_format"],
+                detail_level,
+            )
+            artifacts = dict(result.get("artifacts") or {})
+            artifacts["full_page_screenshot"] = {
+                "stored_path": screenshot_artifact["stored_path"],
+                "base64_path": screenshot_artifact["base64_path"],
+                "base64_chars": screenshot_artifact["base64_chars"],
+                "format": screenshot_payload["image_format"],
+                "width": screenshot_payload["width"],
+                "height": screenshot_payload["height"],
+                "capture_mode": screenshot_payload["capture_mode"],
+                "scale": screenshot_payload["scale"],
+            }
+            result["artifacts"] = artifacts
+
+        if detail_level:
+            result["detail_level"] = detail_level
+
+        response_result = result
+        if not debug:
+            response_result = dict(result)
+            response_result.pop("preprocess_debug", None)
+            response_result.pop("model_debug", None)
+
+        service.log_scan_result(
+            request_url=request_url,
+            result=result,
+            timings=timings,
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=request_url,
+                input_mode=input_mode,
+                debug=debug,
+                insecure=scan_insecure,
+                timeout=scan_timeout,
+                status="success",
+                result=result,
+                timings=timings,
+                http_status=(result.get("preprocess_debug") or {}).get("http_status"),
+            )
+        )
+        return {"result": response_result, "timings": timings}
+    except requests.exceptions.SSLError as exc:
+        service.log_scan_error(
+            request_url=url,
+            input_mode="url",
+            error_type="SSLError",
+            error_message=str(exc),
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=url,
+                input_mode="url",
+                debug=debug,
+                insecure=scan_insecure,
+                timeout=scan_timeout,
+                status="error",
+                error={
+                    "type": "SSLError",
+                    "message": str(exc),
+                },
+            )
+        )
+        return JSONResponse(
+            {
+                "error": (
+                    "TLS verification failed. Retry with insecure mode if your "
+                    "certificate store is incomplete."
+                ),
+                "detail": str(exc),
+            },
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
+    except requests.exceptions.RequestException as exc:
+        response = getattr(exc, "response", None)
+        service.log_scan_error(
+            request_url=url or source_url,
+            input_mode="html" if has_html else "url",
+            error_type=exc.__class__.__name__,
+            error_message=str(exc),
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=url or source_url,
+                input_mode="html" if has_html else "url",
+                debug=debug,
+                insecure=scan_insecure,
+                timeout=scan_timeout,
+                status="error",
+                error={
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                },
+                http_status=None if response is None else response.status_code,
+            )
+        )
+        return JSONResponse(
+            {"error": f"Request failed: {exc}"},
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
+    except Exception as exc:
+        service.log_scan_error(
+            request_url=url or source_url,
+            input_mode="html" if has_html else "url",
+            error_type=exc.__class__.__name__,
+            error_message=str(exc),
+        )
+        await service.append_event_log(
+            service.build_event_record(
+                url=url or source_url,
+                input_mode="html" if has_html else "url",
+                debug=debug,
+                insecure=scan_insecure,
+                timeout=scan_timeout,
+                status="error",
+                error={
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                },
+            )
+        )
+        return JSONResponse(
+            {"error": str(exc)},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

@@ -1,0 +1,5 @@
+-r requirements.txt
+--find-links https://data.pyg.org/whl/torch-2.5.1+cpu.html
+torch_scatter==2.1.2+pt25cpu
+fastapi>=0.110,<1.0
+uvicorn>=0.29,<1.0

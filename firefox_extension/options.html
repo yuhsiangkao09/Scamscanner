@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>SurfPhish Settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow" id="optionsEyebrow">Browser Protection Settings</p>
+        <h1 id="optionsHeading">SurfPhish</h1>
+        <p class="lede" id="optionsLede">Manage local website protection with a calmer, more direct interface. Every change applies instantly.</p>
+      </section>
+
+      <form id="settingsForm" class="grid">
+        <label class="card span-2">
+          <span class="label" id="apiBaseUrlLabel">API Base URL</span>
+          <input id="apiBaseUrl" name="apiBaseUrl" type="url" placeholder="http://127.0.0.1:8000">
+          <small id="apiBaseUrlHelp">Expected to expose `/api/scan` and `/health`.</small>
+        </label>
+
+        <label class="card">
+          <span class="label" id="scanTimeoutLabel">Scan Timeout (seconds)</span>
+          <input id="scanTimeout" name="scanTimeout" type="number" min="1" step="1">
+          <small id="scanTimeoutHelp">Passed to the scanner API on each page check.</small>
+        </label>
+
+        <label class="card">
+          <span class="label" id="uiLanguageLabel">Interface Language</span>
+          <select id="uiLanguage" name="uiLanguage">
+            <option value="zh-TW">繁體中文</option>
+            <option value="en">English</option>
+          </select>
+          <small id="uiLanguageHelp">Switch the popup, settings page, and page warnings between Chinese and English.</small>
+        </label>
+
+        <label class="card checkbox-card">
+          <input id="autoScan" name="autoScan" type="checkbox">
+          <div>
+            <span class="label" id="autoScanLabel">Auto-check page loads</span>
+            <small id="autoScanHelp">Trigger a local scan whenever a tab finishes loading.</small>
+          </div>
+        </label>
+
+        <label class="card checkbox-card">
+          <input id="showBanner" name="showBanner" type="checkbox">
+          <div>
+            <span class="label" id="showBannerLabel">Show in-page notice</span>
+            <small id="showBannerHelp">Display a compact status card in the top-right corner of scanned pages.</small>
+          </div>
+        </label>
+
+        <label class="card checkbox-card">
+          <input id="blockHighRiskInterstitial" name="blockHighRiskInterstitial" type="checkbox">
+          <div>
+            <span class="label" id="blockHighRiskLabel">Block HIGH risk pages</span>
+            <small id="blockHighRiskHelp">Show a full-page warning for HIGH risk pages with back, allow-once, and whitelist actions.</small>
+          </div>
+        </label>
+
+        <label class="card checkbox-card">
+          <input id="insecureFetch" name="insecureFetch" type="checkbox">
+          <div>
+            <span class="label" id="insecureFetchLabel">Allow insecure upstream fetch</span>
+            <small id="insecureFetchHelp">Pass `insecure=true` so the backend can retry sites with broken TLS chains.</small>
+          </div>
+        </label>
+
+        <label class="card checkbox-card">
+          <input id="badgeOnLowRisk" name="badgeOnLowRisk" type="checkbox">
+          <div>
+            <span class="label" id="badgeOnLowRiskLabel">Keep badge on low risk</span>
+            <small id="badgeOnLowRiskHelp">Show a green `LOW` badge even when the detector thinks the page is benign.</small>
+          </div>
+        </label>
+      </form>
+
+      <section class="actions">
+        <button id="testButton" class="primary" type="button">Ping API</button>
+        <p id="feedback" class="feedback"></p>
+      </section>
+
+      <section class="whitelist">
+        <div class="whitelist-head">
+          <div>
+            <p class="eyebrow" id="whitelistEyebrow">Whitelist</p>
+            <h2 id="whitelistHeading">Whitelist</h2>
+            <p class="whitelist-lede" id="whitelistLede">Only exact pages or custom rules you trust are kept here. localhost, 127.0.0.1, and common private-network addresses are skipped automatically.</p>
+          </div>
+          <button id="clearWhitelistButton" class="ghost" type="button">Clear whitelist</button>
+        </div>
+        <div id="whitelistList" class="whitelist-list"></div>
+      </section>
+    </main>
+    <script src="i18n.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>
