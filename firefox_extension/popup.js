@@ -7,6 +7,8 @@ const metrics = document.getElementById("metrics");
 const details = document.getElementById("details");
 const fullCheckActions = document.getElementById("fullCheckActions");
 const fullCheckButton = document.getElementById("fullCheckButton");
+const gmailCheckActions = document.getElementById("gmailCheckActions");
+const gmailCheckButton = document.getElementById("gmailCheckButton");
 const actions = document.getElementById("actions");
 const riskValue = document.getElementById("riskValue");
 const scoreValue = document.getElementById("scoreValue");
@@ -27,6 +29,20 @@ let activeTab = null;
 let currentLanguage = DEFAULT_UI_LANGUAGE;
 let currentState = null;
 let protectionEnabled = false;
+
+function isGmailTab(tab) {
+  try {
+    return new URL(tab?.url || "").hostname === "mail.google.com";
+  } catch (error) {
+    return false;
+  }
+}
+
+function renderGmailActions() {
+  const show = isGmailTab(activeTab);
+  gmailCheckActions.classList.toggle("hidden", !show);
+  gmailCheckButton.disabled = !activeTab?.id;
+}
 
 function setPopupTone(tone) {
   document.body.classList.remove("tone-benign", "tone-high");
@@ -87,9 +103,11 @@ function applyStaticText() {
   document.getElementById("whitelistButton").textContent = t(currentLanguage, "popupActionWhitelist");
   document.getElementById("reportButton").textContent = t(currentLanguage, "popupActionReport");
   document.getElementById("fullCheckButton").textContent = t(currentLanguage, "bannerActionDetailedCheck");
+  document.getElementById("gmailCheckButton").textContent = t(currentLanguage, "emailCheckAction");
   document.getElementById("optionsButton").textContent = t(currentLanguage, "popupSettings");
   document.getElementById("healthButton").textContent = t(currentLanguage, "popupPingApi");
   renderProtectionControls();
+  renderGmailActions();
 }
 
 function renderProtectionControls() {
@@ -134,6 +152,7 @@ function renderReady(state) {
   metrics.classList.remove("hidden");
   details.classList.remove("hidden");
   fullCheckActions.classList.remove("hidden");
+  renderGmailActions();
   falsePositiveButton.hidden = !isHighRisk;
   whitelistButton.hidden = !isHighRisk;
   falsePositiveButton.disabled = false;
@@ -198,6 +217,7 @@ function renderWhitelisted(state) {
   metrics.classList.add("hidden");
   details.classList.add("hidden");
   fullCheckActions.classList.add("hidden");
+  renderGmailActions();
   actions.classList.add("hidden");
   setStatus(t(currentLanguage, "popupStatusWhitelisted"), state.url || "");
 }
@@ -208,6 +228,7 @@ function renderError(state) {
   metrics.classList.add("hidden");
   details.classList.add("hidden");
   fullCheckActions.classList.add("hidden");
+  renderGmailActions();
   actions.classList.add("hidden");
   setStatus(state.error || t(currentLanguage, "popupStatusUnhealthy", { error: "unknown error" }), state.url || "");
 }
@@ -218,6 +239,7 @@ function renderScanning(url) {
   metrics.classList.add("hidden");
   details.classList.add("hidden");
   fullCheckActions.classList.add("hidden");
+  renderGmailActions();
   actions.classList.add("hidden");
   setStatus(t(currentLanguage, "popupStatusScanning"), url);
 }
@@ -228,6 +250,7 @@ async function refreshState() {
   const protectionStatus = await api.runtime.sendMessage({ type: "surfphish:get-protection-status" });
   protectionEnabled = Boolean(protectionStatus?.enabled);
   renderProtectionControls();
+  renderGmailActions();
 
   if (!activeTab || !/^https?:\/\//i.test(activeTab.url || "")) {
     currentState = null;
@@ -235,6 +258,7 @@ async function refreshState() {
     metrics.classList.add("hidden");
     details.classList.add("hidden");
     fullCheckActions.classList.add("hidden");
+    renderGmailActions();
     actions.classList.add("hidden");
     setStatus(t(currentLanguage, "popupCantScan"), activeTab?.url || "");
     return;
@@ -246,6 +270,7 @@ async function refreshState() {
     metrics.classList.add("hidden");
     details.classList.add("hidden");
     fullCheckActions.classList.add("hidden");
+    renderGmailActions();
     actions.classList.add("hidden");
     setStatus(t(currentLanguage, "popupStatusProtectionDisabled"), activeTab.url);
     return;
@@ -324,6 +349,17 @@ fullCheckButton.addEventListener("click", async () => {
   }
   await api.tabs.sendMessage(activeTab.id, {
     type: "surfphish:show-full-check-consent"
+  }).catch(() => {});
+  window.close();
+});
+
+gmailCheckButton.addEventListener("click", async () => {
+  if (!activeTab?.id) {
+    return;
+  }
+  await api.tabs.sendMessage(activeTab.id, {
+    type: "surfphish:show-email-check-consent",
+    manual: true
   }).catch(() => {});
   window.close();
 });

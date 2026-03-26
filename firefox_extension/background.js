@@ -1036,13 +1036,14 @@ async function performDetailedCheck(tabId, allowNow = false) {
   }
 }
 
-async function performEmailCheck(tabId, allowNow = false) {
+async function performEmailCheck(tabId, allowNow = false, options = {}) {
   const tab = await api.tabs.get(tabId);
   const url = tab?.url || "";
+  const manual = Boolean(options.manual);
   if (!isScannableUrl(url) || !/mail\.google\.com$/i.test(new URL(url).hostname)) {
     return { ok: false, error: "This tab is not an open Gmail message." };
   }
-  if (!isProtectionEnabled()) {
+  if (!manual && !isProtectionEnabled()) {
     return { ok: false, error: "SurfPhish protection is not enabled for this browser session." };
   }
   if (!allowNow) {
@@ -1416,7 +1417,9 @@ api.runtime.onMessage.addListener((message, sender) => {
     if (!tabId) {
       return Promise.resolve({ ok: false, error: "No active tab available." });
     }
-    return performEmailCheck(tabId, Boolean(message.allowNow));
+    return performEmailCheck(tabId, Boolean(message.allowNow), {
+      manual: Boolean(message.manual)
+    });
   }
 
   if (message.type === "surfphish:set-protection-enabled") {

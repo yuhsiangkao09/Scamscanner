@@ -7,6 +7,8 @@ let currentState = null;
 let captureUiState = null;
 let bannerAutoHideTimer = null;
 let consentMode = "page";
+let emailCheckManualMode = false;
+let activeResultMode = null;
 let emailCheckState = {
   status: "idle",
   error: "",
@@ -581,12 +583,12 @@ function ensureUi() {
   shadow.getElementById("closeButton").addEventListener("click", () => {
     hideBanner();
   });
-  shadow.getElementById("detailButton").addEventListener("click", () => {
-    showConsentOverlay("", "page");
-  });
-  shadow.getElementById("gmailCheckButton").addEventListener("click", () => {
-    showConsentOverlay("", "email");
-  });
+    shadow.getElementById("detailButton").addEventListener("click", () => {
+      showConsentOverlay("", "page");
+    });
+    shadow.getElementById("gmailCheckButton").addEventListener("click", () => {
+      showConsentOverlay("", "email", { manual: false });
+    });
   shadow.getElementById("cancelConsentButton").addEventListener("click", () => {
     hideConsentOverlay();
   });
@@ -603,10 +605,10 @@ function ensureUi() {
   shadow.getElementById("closeResultActionButton").addEventListener("click", () => {
     hideFullCheckResults();
   });
-  shadow.getElementById("allowConsentButton").addEventListener("click", () => {
-    if (consentMode === "email") {
-      requestEmailCheck(true);
-      return;
+    shadow.getElementById("allowConsentButton").addEventListener("click", () => {
+      if (consentMode === "email") {
+        requestEmailCheck(true);
+        return;
     }
     requestDetailedCheck(true);
   });
@@ -673,8 +675,9 @@ function setConsentMode(mode = "page") {
   shadow.getElementById("cancelConsentButton").textContent = t(lang, `${prefix}Cancel`);
 }
 
-function showConsentOverlay(message = "", mode = consentMode) {
+function showConsentOverlay(message = "", mode = consentMode, options = {}) {
   setConsentMode(mode);
+  emailCheckManualMode = consentMode === "email" ? Boolean(options.manual) : false;
   shadow.getElementById("consentStatus").textContent = message;
   shadow.getElementById("consentOverlay").classList.remove("hidden");
 }
@@ -686,6 +689,7 @@ function hideConsentOverlay() {
   shadow.getElementById("allowConsentButton").disabled = false;
   shadow.getElementById("cancelConsentButton").disabled = false;
   setConsentMode("page");
+  emailCheckManualMode = false;
 }
 
 function showFullCheckResults(analysis, errorMessage = "", options = {}) {
@@ -700,6 +704,7 @@ function showFullCheckResults(analysis, errorMessage = "", options = {}) {
   const titleKey = options.titleKey || "fullCheckResultTitle";
   const introKey = options.introKey || "fullCheckResultIntro";
   const leaveKey = options.leaveKey || "fullCheckResultLeave";
+  activeResultMode = options.mode === "email" ? "email" : "page";
 
   shadow.getElementById("resultTitle").textContent = t(lang, titleKey);
   shadow.getElementById("resultIntro").textContent = t(lang, introKey);
@@ -760,6 +765,7 @@ function showFullCheckResults(analysis, errorMessage = "", options = {}) {
 
 function hideFullCheckResults() {
   shadow.getElementById("resultOverlay").classList.add("hidden");
+  activeResultMode = null;
 }
 
 function normalizeWhitespace(value) {
@@ -1020,9 +1026,23 @@ function updateGmailAssistantUi() {
   }
 
   const payload = collectOpenGmailMessagePayload();
-  const shouldShow = Boolean(payload);
+  const protectionEnabled = Boolean(currentDisplayOptions.protectionEnabled);
+  const shouldShow = Boolean(payload) && protectionEnabled;
   gmailShell.classList.toggle("hidden", !shouldShow);
   if (!shouldShow) {
+    if (!protectionEnabled) {
+      emailCheckState = {
+        status: "idle",
+        error: "",
+        result: null
+      };
+      if (consentMode === "email" && !emailCheckManualMode) {
+        hideConsentOverlay();
+      }
+      if (activeResultMode === "email" && !emailCheckManualMode) {
+        hideFullCheckResults();
+      }
+    }
     if (emailCheckState.status !== "running") {
       emailCheckState = {
         status: "idle",
@@ -1034,7 +1054,6 @@ function updateGmailAssistantUi() {
   }
 
   const lang = currentLanguage();
-  const protectionEnabled = Boolean(currentDisplayOptions.protectionEnabled);
   gmailCheckButton.disabled = emailCheckState.status === "running" || !protectionEnabled;
   if (emailCheckState.status === "running") {
     gmailCheckButton.textContent = t(lang, "emailCheckRunning");
@@ -1100,6 +1119,7 @@ async function requestDetailedCheck(allowNow) {
 
 async function requestEmailCheck(allowNow) {
   const lang = currentLanguage();
+  const manual = emailCheckManualMode;
   setConsentBusy(true, t(lang, "emailConsentSending"));
   emailCheckState = {
     status: "running",
@@ -1108,11 +1128,12 @@ async function requestEmailCheck(allowNow) {
   };
   updateGmailAssistantUi();
 
-  try {
-    const response = await api.runtime.sendMessage({
-      type: "surfphish:request-email-check",
-      allowNow: Boolean(allowNow)
-    });
+    try {
+      const response = await api.runtime.sendMessage({
+        type: "surfphish:request-email-check",
+        allowNow: Boolean(allowNow),
+        manual
+      });
 
     if (response?.requiresConsent) {
       showConsentOverlay("", "email");
@@ -1145,15 +1166,16 @@ async function requestEmailCheck(allowNow) {
       result: response.result || null
     };
     updateGmailAssistantUi();
-    showFullCheckResults(
-      response.result?.full_check_analysis || null,
-      response.result?.full_check_analysis_error?.message || t(lang, "emailResultUnavailable"),
-      {
-        titleKey: "emailResultTitle",
-        introKey: "emailResultIntro",
-        hideLeaveAction: true
-      }
-    );
+      showFullCheckResults(
+        response.result?.full_check_analysis || null,
+        response.result?.full_check_analysis_error?.message || t(lang, "emailResultUnavailable"),
+        {
+          titleKey: "emailResultTitle",
+          introKey: "emailResultIntro",
+          hideLeaveAction: true,
+          mode: "email"
+        }
+      );
   } catch (error) {
     const errorMessage = error.message || t(lang, "emailConsentFailed");
     setConsentBusy(false, errorMessage);
@@ -1246,35 +1268,53 @@ function renderState(payload) {
   };
   currentState = payload?.state || null;
   applyStaticText();
+  const preserveEmailConsentOverlay = consentMode === "email" && emailCheckManualMode;
+  const preserveEmailResultOverlay = activeResultMode === "email";
 
   if (!payload?.showBanner || !currentState) {
     hideBanner();
-    hideConsentOverlay();
-    hideFullCheckResults();
+    if (!preserveEmailConsentOverlay) {
+      hideConsentOverlay();
+    }
+    if (!preserveEmailResultOverlay) {
+      hideFullCheckResults();
+    }
     updateGmailAssistantUi();
     return;
   }
 
   if (currentState.status === "error") {
     hideBanner();
-    hideConsentOverlay();
-    hideFullCheckResults();
+    if (!preserveEmailConsentOverlay) {
+      hideConsentOverlay();
+    }
+    if (!preserveEmailResultOverlay) {
+      hideFullCheckResults();
+    }
     updateGmailAssistantUi();
     return;
   }
 
   if (currentState.status !== "ready") {
     hideBanner();
-    hideConsentOverlay();
-    hideFullCheckResults();
+    if (!preserveEmailConsentOverlay) {
+      hideConsentOverlay();
+    }
+    if (!preserveEmailResultOverlay) {
+      hideFullCheckResults();
+    }
     updateGmailAssistantUi();
     return;
   }
 
   if (currentState.status === "whitelisted") {
     hideBanner();
-    hideConsentOverlay();
-    hideFullCheckResults();
+    if (!preserveEmailConsentOverlay) {
+      hideConsentOverlay();
+    }
+    if (!preserveEmailResultOverlay) {
+      hideFullCheckResults();
+    }
     updateGmailAssistantUi();
     return;
   }
@@ -1283,8 +1323,12 @@ function renderState(payload) {
     hideBanner();
     const detailedStatus = String(currentState.detailedCheck?.status || "");
     if (!["running", "complete", "error"].includes(detailedStatus)) {
-      hideConsentOverlay();
-      hideFullCheckResults();
+      if (!preserveEmailConsentOverlay) {
+        hideConsentOverlay();
+      }
+      if (!preserveEmailResultOverlay) {
+        hideFullCheckResults();
+      }
     }
     updateGmailAssistantUi();
     return;
@@ -1436,6 +1480,12 @@ api.runtime.onMessage.addListener((message) => {
     ensureUi();
     applyStaticText();
     showConsentOverlay("", "page");
+    return Promise.resolve({ ok: true });
+  }
+  if (message?.type === "surfphish:show-email-check-consent") {
+    ensureUi();
+    applyStaticText();
+    showConsentOverlay("", "email", { manual: Boolean(message.manual) });
     return Promise.resolve({ ok: true });
   }
   if (message?.type === "surfphish:collect-email-payload") {
