@@ -45,21 +45,19 @@ Open two terminals.
 
 Terminal 1: start the main backend
 
-```powershell
-cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan
-.\.venv\Scripts\python.exe backend\run.py
+```
+uvicorn backend.app.main:app --host 127.0.0.1 --port 5000
 ```
 
 Terminal 2: start RealFake API
 
-```powershell
-cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan\RealFake
+```
 uvicorn server:app --reload --port 9000
 ```
 
 Then load the Firefox extension from:
 
-```text
+```
 scamscan/firefox_extension
 ```
 
@@ -67,8 +65,8 @@ scamscan/firefox_extension
 
 Copy the example env file:
 
-```powershell
-cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan
+```
+
 Copy-Item backend\.env.example backend\.env
 ```
 
@@ -91,7 +89,7 @@ Notes:
 
 Install backend dependencies if needed:
 
-```powershell
+```
 .\.venv\Scripts\pip.exe install -r requirements.cpu.txt
 ```
 
@@ -107,8 +105,8 @@ RealFake is a separate API. The main backend does not run Bedrock directly anymo
 
 Install dependencies inside your RealFake environment:
 
-```powershell
-cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan\RealFake
+```
+\RealFake
 pip install -r requirements.txt
 playwright install chromium
 ```
@@ -127,7 +125,7 @@ us-west-2
 
 Run RealFake:
 
-```powershell
+```
 uvicorn server:app --reload --port 9000
 ```
 
@@ -172,20 +170,20 @@ Even if the page currently looks benign, the popup still provides a `Full Check`
 
 Use the CLI helper to test the backend route that accepts only a URL:
 
-```powershell
-cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan
+```
+
 .\.venv\Scripts\python.exe tools\test_fetch_url.py https://example.com --pretty
 ```
 
 Use a remote backend:
 
-```powershell
+```
 .\.venv\Scripts\python.exe tools\test_fetch_url.py https://example.com --api-base-url https://your-api-domain
 ```
 
 Full endpoint guide:
 
-- [docs/fetch-url-api-guide.md](/c:/Users/snoozedog/Desktop/workspace/0326/scamscan/docs/fetch-url-api-guide.md)
+- [tools/docs/fetch-url-api-guide.md](/c:/Users/snoozedog/Desktop/workspace/0326/scamscan/docs/fetch-url-api-guide.md)
 
 ## Screenshot Behavior
 
@@ -234,8 +232,8 @@ Install AWS CLI or configure credentials manually through `.aws` files or enviro
 
 Typical upload flow:
 
-```powershell
-cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan
+```
+
 git status
 git add .
 git commit -m "your update message"

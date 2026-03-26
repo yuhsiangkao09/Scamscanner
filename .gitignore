@@ -1,9 +1,10 @@
 .venv/
+RealFake/venv/
 __pycache__/
 *.py[cod]
 
 logs/
-models/
+# models/
 data/
 
 backend/.env
