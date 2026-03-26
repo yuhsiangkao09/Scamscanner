@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>SurfPhish</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow" id="eyebrowText">Local Page Scan</p>
+          <h1 id="brandHeading">SurfPhish</h1>
+        </div>
+        <button id="rescanButton" class="primary" type="button">Rescan</button>
+      </section>
+
+      <section class="panel" id="statusPanel">
+        <p class="status-line" id="statusLine">Opening current tab...</p>
+        <p class="url-line" id="urlLine"></p>
+      </section>
+
+      <section class="guard-panel" id="protectionPanel">
+        <div>
+          <p class="guard-label" id="protectionLabel">SurfPhish Protection</p>
+          <p class="guard-copy" id="protectionSummary">Protection is currently off.</p>
+        </div>
+        <button id="protectionToggleButton" class="primary" type="button">Allow</button>
+      </section>
+
+      <section class="metrics hidden" id="metrics">
+        <article class="metric-card">
+          <span class="metric-label" id="riskLabelText">Risk Level</span>
+          <strong class="metric-value" id="riskValue">LOW</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label" id="scoreLabelText">Phishing Score</span>
+          <strong class="metric-value" id="scoreValue">0%</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label" id="errorLabelText">Recon Error</span>
+          <strong class="metric-value small" id="errorValue">0.0000</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label" id="thresholdLabelText">Threshold</span>
+          <strong class="metric-value small" id="thresholdValue">0.0000</strong>
+        </article>
+      </section>
+
+      <section class="detail-list hidden" id="details">
+        <div class="detail-row">
+          <span id="predictionLabelText">Prediction</span>
+          <strong id="predictionValue">benign</strong>
+        </div>
+        <div class="detail-row">
+          <span id="errorOnlyLabelText">Error-Only Prediction</span>
+          <strong id="errorOnlyValue">benign</strong>
+        </div>
+        <div class="detail-row">
+          <span id="marginLabelText">Threshold Margin</span>
+          <strong id="marginValue">0.0000</strong>
+        </div>
+        <div class="detail-row">
+          <span id="lookupStatusLabelText">Threat DB</span>
+          <strong id="lookupStatusValue">Pending</strong>
+        </div>
+        <div class="detail-row">
+          <span id="lookupMatchesLabelText">DB Matches</span>
+          <strong id="lookupMatchesValue">0</strong>
+        </div>
+      </section>
+
+      <section class="actions hidden full-check-actions" id="fullCheckActions">
+        <button id="fullCheckButton" class="action-button full-check-button" type="button">Full Check</button>
+      </section>
+
+      <section class="actions hidden full-check-actions" id="gmailCheckActions">
+        <button id="gmailCheckButton" class="action-button full-check-button" type="button">Check this email</button>
+      </section>
+
+      <section class="actions hidden" id="actions">
+        <button id="falsePositiveButton" class="ghost action-button" type="button">This is not phishing</button>
+        <button id="whitelistButton" class="ghost action-button" type="button">Add this to whitelist</button>
+        <button id="reportButton" class="ghost action-button" type="button">Report this site</button>
+      </section>
+
+      <footer class="footer">
+        <button id="optionsButton" class="ghost" type="button">Settings</button>
+        <button id="healthButton" class="ghost" type="button">Ping API</button>
+      </footer>
+    </main>
+    <script src="i18n.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

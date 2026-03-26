@@ -1,3 +1,11 @@
+try {
+  if (!globalThis.SurfPhishI18n && typeof importScripts === "function") {
+    importScripts("i18n.js");
+  }
+} catch (error) {
+  console.warn("[SurfPhish] Failed to preload i18n helpers in background context.", error);
+}
+
 const api = globalThis.browser ?? globalThis.chrome;
 const { DEFAULT_UI_LANGUAGE, normalizeUiLanguage } = globalThis.SurfPhishI18n;
 
@@ -20,6 +28,8 @@ const MAX_USER_SITE_DECISIONS = 500;
 const MAX_STITCHED_PIXELS = 16_000_000;
 const MAX_FULLPAGE_CAPTURE_SCROLLS = 6;
 const CAPTURE_SETTLE_MS = 420;
+const CAPTURE_VISIBLE_TAB_MIN_INTERVAL_MS = 650;
+const CAPTURE_VISIBLE_TAB_QUOTA_BACKOFF_MS = 1200;
 const LOOKUP_API_URL = "https://ynhy80qtt6.execute-api.us-west-2.amazonaws.com/prod/lookup";
 const LOOKUP_TIMEOUT_MS = 8000;
 const MAX_LOOKUP_ITEMS = 10;
@@ -31,6 +41,7 @@ const tabBypasses = new Map();
 const recentScanCache = new Map();
 let settings = { ...DEFAULT_SETTINGS };
 let userSiteDecisions = {};
+let lastVisibleTabCaptureAt = 0;
 
 function normalizeApiBaseUrl(value) {
   return String(value || DEFAULT_SETTINGS.apiBaseUrl).trim().replace(/\/+$/, "");
@@ -759,30 +770,104 @@ function buildCapturePositions(total, viewport) {
   return Array.from(new Set(positions));
 }
 
-function loadImage(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Failed to decode captured screenshot tile."));
-    image.src = dataUrl;
-  });
+function createCanvasSurface(width, height) {
+  const safeWidth = Math.max(1, Math.round(width));
+  const safeHeight = Math.max(1, Math.round(height));
+  if (typeof OffscreenCanvas !== "undefined") {
+    return new OffscreenCanvas(safeWidth, safeHeight);
+  }
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    canvas.width = safeWidth;
+    canvas.height = safeHeight;
+    return canvas;
+  }
+  throw new Error("Canvas is not available in this browser context.");
+}
+
+async function loadImage(dataUrl) {
+  if (typeof createImageBitmap === "function") {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    return createImageBitmap(blob);
+  }
+  if (typeof Image !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Failed to decode captured screenshot tile."));
+      image.src = dataUrl;
+    });
+  }
+  throw new Error("Image decoding is not available in this browser context.");
+}
+
+function getImageSourceWidth(image) {
+  return Number(image?.naturalWidth || image?.width || 0);
+}
+
+function getImageSourceHeight(image) {
+  return Number(image?.naturalHeight || image?.height || 0);
+}
+
+async function encodeCanvasAsJpegBase64(canvas, quality) {
+  if (typeof canvas.toDataURL === "function") {
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    return dataUrl.split(",", 2)[1] || "";
+  }
+  if (typeof canvas.convertToBlob === "function") {
+    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+    return btoa(binary);
+  }
+  throw new Error("JPEG encoding is not available in this browser context.");
 }
 
 function isMissingActiveTabPermissionError(error) {
   return /activeTab permission/i.test(String(error?.message || error || ""));
 }
 
+function isCaptureVisibleTabQuotaError(error) {
+  return /MAX_CAPTURE_VISIBLE_TAB_PER_SECOND/i.test(String(error?.message || error || ""));
+}
+
+async function waitForVisibleTabCaptureWindow() {
+  const elapsed = Date.now() - lastVisibleTabCaptureAt;
+  const remaining = CAPTURE_VISIBLE_TAB_MIN_INTERVAL_MS - elapsed;
+  if (remaining > 0) {
+    await wait(remaining);
+  }
+}
+
 async function captureVisibleTabWithRetry(tabId, windowId) {
+  await waitForVisibleTabCaptureWindow();
   try {
-    return await api.tabs.captureVisibleTab(windowId, { format: "png" });
+    const dataUrl = await api.tabs.captureVisibleTab(windowId, { format: "png" });
+    lastVisibleTabCaptureAt = Date.now();
+    return dataUrl;
   } catch (error) {
+    if (isCaptureVisibleTabQuotaError(error)) {
+      await wait(CAPTURE_VISIBLE_TAB_QUOTA_BACKOFF_MS);
+      const dataUrl = await api.tabs.captureVisibleTab(windowId, { format: "png" });
+      lastVisibleTabCaptureAt = Date.now();
+      return dataUrl;
+    }
     if (!isMissingActiveTabPermissionError(error)) {
       throw error;
     }
 
     await api.tabs.update(tabId, { active: true }).catch(() => {});
     await wait(180);
-    return api.tabs.captureVisibleTab(windowId, { format: "png" });
+    await waitForVisibleTabCaptureWindow();
+    const dataUrl = await api.tabs.captureVisibleTab(windowId, { format: "png" });
+    lastVisibleTabCaptureAt = Date.now();
+    return dataUrl;
   }
 }
 
@@ -810,9 +895,10 @@ async function captureFullPageScreenshot(tabId) {
       ? Math.sqrt(MAX_STITCHED_PIXELS / pixelCount)
       : 1;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(totalWidth * scale));
-    canvas.height = Math.max(1, Math.round(totalHeight * scale));
+    const canvas = createCanvasSurface(
+      Math.max(1, Math.round(totalWidth * scale)),
+      Math.max(1, Math.round(totalHeight * scale))
+    );
     const context = canvas.getContext("2d");
     if (!context) {
       throw new Error("Canvas stitching context could not be created.");
@@ -840,8 +926,8 @@ async function captureFullPageScreenshot(tabId) {
         const captureY = Number(actual?.y ?? y);
         const visibleWidth = Math.min(viewportWidth, Math.max(totalWidth - captureX, 1));
         const visibleHeight = Math.min(viewportHeight, Math.max(totalHeight - captureY, 1));
-        const sourceWidth = image.naturalWidth * (visibleWidth / viewportWidth);
-        const sourceHeight = image.naturalHeight * (visibleHeight / viewportHeight);
+        const sourceWidth = getImageSourceWidth(image) * (visibleWidth / viewportWidth);
+        const sourceHeight = getImageSourceHeight(image) * (visibleHeight / viewportHeight);
 
         context.drawImage(
           image,
@@ -854,6 +940,9 @@ async function captureFullPageScreenshot(tabId) {
           Math.round(visibleWidth * scale),
           Math.round(visibleHeight * scale)
         );
+        if (typeof image.close === "function") {
+          image.close();
+        }
       }
     }
 
@@ -864,8 +953,7 @@ async function captureFullPageScreenshot(tabId) {
     // const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
     // const image = await loadImage(dataUrl);
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-    const [, imageBase64 = ""] = dataUrl.split(",", 2);
+    const imageBase64 = await encodeCanvasAsJpegBase64(canvas, 0.88);
     return {
       screenshotPngBase64: imageBase64,
       screenshotFormat: "jpeg",
@@ -900,17 +988,15 @@ async function captureElementScreenshot(tabId, captureRect) {
     const y = Math.max(0, Number(captureRect?.y || 0));
     const width = Math.max(1, Math.min(Number(captureRect?.width || 0), viewportWidth - x || viewportWidth));
     const height = Math.max(1, Math.min(Number(captureRect?.height || 0), viewportHeight - y || viewportHeight));
-    const scaleX = image.naturalWidth / viewportWidth;
-    const scaleY = image.naturalHeight / viewportHeight;
+    const scaleX = getImageSourceWidth(image) / viewportWidth;
+    const scaleY = getImageSourceHeight(image) / viewportHeight;
 
     const sourceX = Math.max(0, Math.round(x * scaleX));
     const sourceY = Math.max(0, Math.round(y * scaleY));
     const sourceWidth = Math.max(1, Math.round(width * scaleX));
     const sourceHeight = Math.max(1, Math.round(height * scaleY));
 
-    const canvas = document.createElement("canvas");
-    canvas.width = sourceWidth;
-    canvas.height = sourceHeight;
+    const canvas = createCanvasSurface(sourceWidth, sourceHeight);
     const context = canvas.getContext("2d");
     if (!context) {
       throw new Error("Canvas context could not be created for email capture.");
@@ -928,9 +1014,11 @@ async function captureElementScreenshot(tabId, captureRect) {
       sourceWidth,
       sourceHeight
     );
+    if (typeof image.close === "function") {
+      image.close();
+    }
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-    const [, imageBase64 = ""] = dataUrl.split(",", 2);
+    const imageBase64 = await encodeCanvasAsJpegBase64(canvas, 0.9);
     return {
       screenshotPngBase64: imageBase64,
       screenshotFormat: "jpeg",
@@ -1400,9 +1488,9 @@ api.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-api.runtime.onMessage.addListener((message, sender) => {
+function handleRuntimeMessage(message, sender) {
   if (!message || !message.type) {
-    return undefined;
+    return null;
   }
 
   if (message.type === "surfphish:get-scan-state") {
@@ -1621,7 +1709,18 @@ api.runtime.onMessage.addListener((message, sender) => {
       .catch((error) => ({ ok: false, error: error.message }));
   }
 
-  return undefined;
+  return null;
+}
+
+api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const handled = handleRuntimeMessage(message, sender);
+  if (!handled) {
+    return false;
+  }
+  handled
+    .then((result) => sendResponse(result))
+    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+  return true;
 });
 
 loadSettings().then(async () => {
