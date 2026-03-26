@@ -19,6 +19,9 @@ const MAX_FEEDBACK_EVENTS = 200;
 const MAX_USER_SITE_DECISIONS = 500;
 const MAX_STITCHED_PIXELS = 16_000_000;
 const CAPTURE_SETTLE_MS = 420;
+const LOOKUP_API_URL = "https://ynhy80qtt6.execute-api.us-west-2.amazonaws.com/prod/lookup";
+const LOOKUP_TIMEOUT_MS = 8000;
+const MAX_LOOKUP_ITEMS = 10;
 
 const tabState = new Map();
 const tabTimers = new Map();
@@ -400,6 +403,130 @@ function summarizeResult(scanResult) {
   };
 }
 
+function toFiniteNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  ));
+}
+
+function compactLookupCandidate(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+  return {
+    indicatorType: String(candidate.indicator_type || "").trim(),
+    indicator: String(candidate.indicator || "").trim(),
+    indicatorKey: String(candidate.indicator_key || "").trim(),
+    matchedVia: String(candidate.matched_via || "").trim()
+  };
+}
+
+function compactLookupMatch(match) {
+  if (!match || typeof match !== "object") {
+    return null;
+  }
+  return {
+    indicatorType: String(match.indicator_type || "").trim(),
+    indicator: String(match.indicator || "").trim(),
+    matchedVia: String(match.matched_via || "").trim(),
+    recordStatuses: uniqueStrings(match.record_statuses),
+    sourceIds: uniqueStrings(match.source_ids),
+    brands: uniqueStrings(match.brands),
+    runId: String(match.run_id || "").trim(),
+    rebuildRunId: String(match.rebuild_run_id || "").trim()
+  };
+}
+
+function summarizeLookupPayload(payload, url, domain) {
+  const candidates = (Array.isArray(payload?.candidates) ? payload.candidates : [])
+    .map((candidate) => compactLookupCandidate(candidate))
+    .filter(Boolean)
+    .slice(0, MAX_LOOKUP_ITEMS);
+  const matches = (Array.isArray(payload?.matches) ? payload.matches : [])
+    .map((match) => compactLookupMatch(match))
+    .filter(Boolean)
+    .slice(0, MAX_LOOKUP_ITEMS);
+
+  return {
+    status: "complete",
+    queriedUrl: url,
+    queriedDomain: domain,
+    found: Boolean(payload?.found),
+    matchCount: toFiniteNumber(payload?.match_count, matches.length),
+    candidateCount: toFiniteNumber(payload?.candidate_count, candidates.length),
+    query: payload?.query && typeof payload.query === "object" ? payload.query : null,
+    indexMetadata: payload?.index_metadata && typeof payload.index_metadata === "object"
+      ? payload.index_metadata
+      : null,
+    matches,
+    candidates,
+    sourceIds: uniqueStrings(matches.flatMap((match) => match.sourceIds || [])),
+    recordStatuses: uniqueStrings(matches.flatMap((match) => match.recordStatuses || [])),
+    brands: uniqueStrings(matches.flatMap((match) => match.brands || [])),
+    updatedAt: Date.now()
+  };
+}
+
+async function lookupThreatDatabase(url) {
+  const normalizedUrl = normalizeScannableUrl(url);
+  const domain = hostnameFromUrl(url);
+  if (!normalizedUrl) {
+    return {
+      status: "skipped",
+      queriedUrl: url,
+      queriedDomain: domain,
+      updatedAt: Date.now()
+    };
+  }
+
+  try {
+    const response = await withTimeout(
+      fetch(LOOKUP_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          indicator: normalizedUrl,
+          indicator_type: "url",
+          url: normalizedUrl,
+          domain: domain || undefined
+        })
+      }),
+      LOOKUP_TIMEOUT_MS,
+      "Timed out while querying the external security database."
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        status: "error",
+        queriedUrl: normalizedUrl,
+        queriedDomain: domain,
+        error: payload?.error || `Lookup API failed with ${response.status}`,
+        updatedAt: Date.now()
+      };
+    }
+
+    return summarizeLookupPayload(payload, normalizedUrl, domain);
+  } catch (error) {
+    return {
+      status: "error",
+      queriedUrl: normalizedUrl,
+      queriedDomain: domain,
+      error: error.message || "Unknown lookup error",
+      updatedAt: Date.now()
+    };
+  }
+}
+
 function badgeAppearance(state) {
   if (!state || state.status === "idle") {
     return { text: "", color: [0, 0, 0, 0] };
@@ -455,11 +582,12 @@ async function setTabState(tabId, nextState) {
   await pushContentUpdate(tabId, nextState);
 }
 
-function buildErrorState(url, errorMessage) {
+function buildErrorState(url, errorMessage, extra = {}) {
   return {
     status: "error",
     url,
     error: errorMessage,
+    ...extra,
     updatedAt: Date.now()
   };
 }
@@ -564,6 +692,24 @@ function loadImage(dataUrl) {
   });
 }
 
+function isMissingActiveTabPermissionError(error) {
+  return /activeTab permission/i.test(String(error?.message || error || ""));
+}
+
+async function captureVisibleTabWithRetry(tabId, windowId) {
+  try {
+    return await api.tabs.captureVisibleTab(windowId, { format: "png" });
+  } catch (error) {
+    if (!isMissingActiveTabPermissionError(error)) {
+      throw error;
+    }
+
+    await api.tabs.update(tabId, { active: true }).catch(() => {});
+    await wait(180);
+    return api.tabs.captureVisibleTab(windowId, { format: "png" });
+  }
+}
+
 async function captureFullPageScreenshot(tabId) {
   const tab = await api.tabs.get(tabId);
   const metrics = await withTimeout(
@@ -610,7 +756,7 @@ async function captureFullPageScreenshot(tabId) {
         });
         await wait(CAPTURE_SETTLE_MS);
 
-        const tileDataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+        const tileDataUrl = await captureVisibleTabWithRetry(tabId, tab.windowId);
         const image = await loadImage(tileDataUrl);
         const captureX = Number(actual?.x ?? x);
         const captureY = Number(actual?.y ?? y);
@@ -727,6 +873,7 @@ async function performDetailedCheck(tabId, allowNow = false) {
       rawResult: payload.result,
       timings: payload.timings || {},
       pageContext: pagePayload.pageContext || null,
+      lookup: baseState.lookup || null,
       decision: baseState.decision || null,
       detailedCheck: {
         status: "complete",
@@ -744,22 +891,26 @@ async function performDetailedCheck(tabId, allowNow = false) {
       summary: nextState.summary,
       rawResult: nextState.rawResult,
       timings: nextState.timings,
-      pageContext: nextState.pageContext
+      pageContext: nextState.pageContext,
+      lookup: nextState.lookup || null
     });
     await setTabState(tabId, nextState);
     return { ok: true, state: nextState };
   } catch (error) {
+    const errorMessage = isMissingActiveTabPermissionError(error)
+      ? "Firefox did not grant tab capture permission for this page. Please reopen the SurfPhish popup on this tab and try Full Check again."
+      : error.message;
     const failedState = {
       ...baseState,
       detailedCheck: {
         status: "error",
-        error: error.message,
+        error: errorMessage,
         updatedAt: Date.now()
       },
       updatedAt: Date.now()
     };
     await setTabState(tabId, failedState);
-    return { ok: false, error: error.message, state: failedState };
+    return { ok: false, error: errorMessage, state: failedState };
   }
 }
 
@@ -810,6 +961,7 @@ async function scanTab(tabId, url, options = {}) {
         rawResult: cached.rawResult,
         timings: cached.timings,
         pageContext: cached.pageContext,
+        lookup: cached.lookup || null,
         decision: null,
         cached: true,
         cachedAt: cached.cachedAt,
@@ -822,6 +974,7 @@ async function scanTab(tabId, url, options = {}) {
 
   const scanToken = `${Date.now()}-${Math.random()}`;
   tabTokens.set(tabId, scanToken);
+  const lookupPromise = lookupThreatDatabase(url);
 
   await setTabState(tabId, {
     status: "scanning",
@@ -832,10 +985,12 @@ async function scanTab(tabId, url, options = {}) {
   let response;
   let payload;
   let pagePayload;
+  let lookup;
   try {
     pagePayload = await collectPagePayload(tabId, url);
   } catch (error) {
-    const nextState = buildErrorState(url, `Cannot read page DOM: ${error.message}`);
+    lookup = await lookupPromise;
+    const nextState = buildErrorState(url, `Cannot read page DOM: ${error.message}`, { lookup });
     if (tabTokens.get(tabId) === scanToken) {
       await setTabState(tabId, nextState);
     }
@@ -843,7 +998,8 @@ async function scanTab(tabId, url, options = {}) {
   }
 
   if (!pagePayload?.sourceUrl || (!pagePayload.html && !pagePayload.htmlGzipBase64)) {
-    const nextState = buildErrorState(url, "Page snapshot was empty or incomplete.");
+    lookup = await lookupPromise;
+    const nextState = buildErrorState(url, "Page snapshot was empty or incomplete.", { lookup });
     if (tabTokens.get(tabId) === scanToken) {
       await setTabState(tabId, nextState);
     }
@@ -859,9 +1015,12 @@ async function scanTab(tabId, url, options = {}) {
       htmlChars: pagePayload.html?.length || 0,
       compressedChars: pagePayload.htmlGzipBase64?.length || 0
     });
-    response = await sendScanRequest(pagePayload, {
-      detail_level: "standard"
-    });
+    [lookup, response] = await Promise.all([
+      lookupPromise,
+      sendScanRequest(pagePayload, {
+        detail_level: "standard"
+      })
+    ]);
     payload = await response.json();
     console.debug("[SurfPhish] Scanner API responded.", {
       tabId,
@@ -870,7 +1029,8 @@ async function scanTab(tabId, url, options = {}) {
       status: response.status
     });
   } catch (error) {
-    const nextState = buildErrorState(url, `Cannot reach scanner API: ${error.message}`);
+    lookup = lookup || await lookupPromise;
+    const nextState = buildErrorState(url, `Cannot reach scanner API: ${error.message}`, { lookup });
     if (tabTokens.get(tabId) === scanToken) {
       await setTabState(tabId, nextState);
     }
@@ -882,7 +1042,11 @@ async function scanTab(tabId, url, options = {}) {
   }
 
   if (!response.ok || !payload.result) {
-    const nextState = buildErrorState(url, payload.error || `Scanner API failed with ${response.status}`);
+    const nextState = buildErrorState(
+      url,
+      payload.error || `Scanner API failed with ${response.status}`,
+      { lookup: lookup || null }
+    );
     await setTabState(tabId, nextState);
     return nextState;
   }
@@ -896,6 +1060,7 @@ async function scanTab(tabId, url, options = {}) {
     rawResult: payload.result,
     timings: payload.timings || {},
     pageContext: pagePayload.pageContext || null,
+    lookup: lookup || null,
     detailedCheck: current?.detailedCheck || null,
     decision: bypass
       ? {
@@ -909,7 +1074,8 @@ async function scanTab(tabId, url, options = {}) {
     summary: nextState.summary,
     rawResult: nextState.rawResult,
     timings: nextState.timings,
-    pageContext: nextState.pageContext
+    pageContext: nextState.pageContext,
+    lookup: nextState.lookup || null
   });
   await setTabState(tabId, nextState);
   return nextState;

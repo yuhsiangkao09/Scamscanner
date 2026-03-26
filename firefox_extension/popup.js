@@ -15,6 +15,8 @@ const thresholdValue = document.getElementById("thresholdValue");
 const predictionValue = document.getElementById("predictionValue");
 const errorOnlyValue = document.getElementById("errorOnlyValue");
 const marginValue = document.getElementById("marginValue");
+const lookupStatusValue = document.getElementById("lookupStatusValue");
+const lookupMatchesValue = document.getElementById("lookupMatchesValue");
 const falsePositiveButton = document.getElementById("falsePositiveButton");
 const reportButton = document.getElementById("reportButton");
 const protectionSummary = document.getElementById("protectionSummary");
@@ -52,6 +54,8 @@ function applyStaticText() {
   document.getElementById("predictionLabelText").textContent = t(currentLanguage, "popupDetailPrediction");
   document.getElementById("errorOnlyLabelText").textContent = t(currentLanguage, "popupDetailErrorOnly");
   document.getElementById("marginLabelText").textContent = t(currentLanguage, "popupDetailThresholdMargin");
+  document.getElementById("lookupStatusLabelText").textContent = t(currentLanguage, "popupDetailLookupStatus");
+  document.getElementById("lookupMatchesLabelText").textContent = t(currentLanguage, "popupDetailLookupMatches");
   document.getElementById("falsePositiveButton").textContent = t(currentLanguage, "popupActionFalsePositive");
   document.getElementById("reportButton").textContent = t(currentLanguage, "popupActionReport");
   document.getElementById("fullCheckButton").textContent = t(currentLanguage, "bannerActionDetailedCheck");
@@ -73,6 +77,21 @@ function renderProtectionControls() {
 function setStatus(message, url = "") {
   statusLine.textContent = message;
   urlLine.textContent = url;
+}
+
+function formatLookupStatus(lookup) {
+  if (!lookup || lookup.status === "skipped") {
+    return t(currentLanguage, "popupLookupUnavailable");
+  }
+  if (lookup.status === "error") {
+    return t(currentLanguage, "popupLookupError");
+  }
+  if (lookup.status !== "complete") {
+    return t(currentLanguage, "popupLookupPending");
+  }
+  return lookup.found
+    ? t(currentLanguage, "popupLookupMatched")
+    : t(currentLanguage, "popupLookupNoMatch");
 }
 
 function renderReady(state) {
@@ -108,14 +127,19 @@ function renderReady(state) {
     fullCheckButton.disabled = false;
     fullCheckButton.textContent = t(currentLanguage, "bannerActionDetailedCheck");
   }
+  const lookup = state.lookup || null;
+  const baseStatus = isReportedPhishing
+    ? t(currentLanguage, "popupStatusReported")
+    : isMarkedSafe
+      ? t(currentLanguage, "popupStatusMarkedSafe")
+      : summary.isPhishing
+        ? t(currentLanguage, "popupStatusSuspicious")
+        : t(currentLanguage, "popupStatusBenign");
+  const lookupSuffix = lookup?.status === "complete" && lookup.found
+    ? ` ${t(currentLanguage, "popupStatusLookupMatched", { count: String(lookup.matchCount || 0) })}`
+    : "";
   setStatus(
-    isReportedPhishing
-      ? t(currentLanguage, "popupStatusReported")
-      : isMarkedSafe
-        ? t(currentLanguage, "popupStatusMarkedSafe")
-        : summary.isPhishing
-          ? t(currentLanguage, "popupStatusSuspicious")
-          : t(currentLanguage, "popupStatusBenign"),
+    `${baseStatus}${lookupSuffix}`.trim(),
     state.url
   );
   riskValue.textContent = riskLabel(currentLanguage, summary.riskLevel);
@@ -125,6 +149,12 @@ function renderReady(state) {
   predictionValue.textContent = summary.prediction;
   errorOnlyValue.textContent = summary.errorOnlyPrediction;
   marginValue.textContent = summary.thresholdMargin.toFixed(4);
+  lookupStatusValue.textContent = formatLookupStatus(lookup);
+  lookupMatchesValue.textContent = lookup?.status === "complete"
+    ? String(lookup.matchCount || 0)
+    : lookup?.status === "error"
+      ? "--"
+      : "0";
 }
 
 function renderWhitelisted(state) {

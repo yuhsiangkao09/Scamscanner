@@ -28,15 +28,15 @@ Full Check flow:
 
 ```text
 scamscan/
-├─ backend/
-│  ├─ app/
-│  ├─ .env
-│  └─ .env.example
-├─ firefox_extension/
-├─ RealFake/
-├─ models/
-├─ logs/
-└─ requirements.cpu.txt
+|- backend/
+|  |- app/
+|  |- .env
+|  `- .env.example
+|- firefox_extension/
+|- RealFake/
+|- models/
+|- logs/
+`- requirements.cpu.txt
 ```
 
 ## Quick Start
@@ -192,3 +192,33 @@ Common paths:
 - event log: `logs/url_scanner_events.jsonl`
 - feedback log: `logs/url_scanner_feedback.jsonl`
 - feedback HTML: `logs/url_scanner_feedback_html`
+
+## Troubleshooting
+
+### `Missing activeTab permission`
+
+Reload the extension after manifest or permission changes.
+
+### `WinError 10013` when starting RealFake
+
+The port is already blocked or occupied. Start on another port such as `9000`.
+
+### Bedrock `length limit exceeded`
+
+This usually means the screenshot payload is too large. The current flow already switches the stitched upload to JPEG to reduce request size, but very tall pages may still need more compression logic in RealFake.
+
+### `aws` is not recognized
+
+Install AWS CLI or configure credentials manually through `.aws` files or environment variables.
+
+## Git Workflow
+
+Typical upload flow:
+
+```powershell
+cd C:\Users\snoozedog\Desktop\workspace\0326\scamscan
+git status
+git add .
+git commit -m "your update message"
+git push
+```

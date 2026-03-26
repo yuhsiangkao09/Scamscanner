@@ -756,8 +756,11 @@ function renderState(payload) {
 
   if (String(currentState.summary?.riskLevel || "").toUpperCase() === "LOW") {
     hideBanner();
-    hideConsentOverlay();
-    hideFullCheckResults();
+    const detailedStatus = String(currentState.detailedCheck?.status || "");
+    if (!["running", "complete", "error"].includes(detailedStatus)) {
+      hideConsentOverlay();
+      hideFullCheckResults();
+    }
     return;
   }
 

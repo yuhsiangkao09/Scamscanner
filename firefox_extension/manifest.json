@@ -10,6 +10,7 @@
   ],
   "host_permissions": [
     "<all_urls>",
+    "http://44.252.12.27/*",
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
