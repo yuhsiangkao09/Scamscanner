@@ -77,6 +77,9 @@ class AppSettings:
     feedback_log_path: Path
     feedback_html_dir: Path
     screenshot_dir: Path
+    realfake_enabled: bool
+    realfake_api_base_url: str
+    realfake_timeout: int
     admin_password: str
     admin_password_generated: bool
     reload: bool
@@ -125,6 +128,9 @@ def get_settings() -> AppSettings:
         screenshot_dir=_resolve_project_path(
             os.getenv("APP_SCREENSHOT_DIR", "logs/url_scanner_screenshots")
         ),
+        realfake_enabled=_as_bool("APP_REALFAKE_ENABLED", False),
+        realfake_api_base_url=os.getenv("APP_REALFAKE_API_BASE_URL", "").strip().rstrip("/"),
+        realfake_timeout=_as_int("APP_REALFAKE_TIMEOUT", 45),
         admin_password=admin_password,
         admin_password_generated=generated_admin_password,
         reload=_as_bool("APP_RELOAD", False),

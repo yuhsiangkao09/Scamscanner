@@ -608,8 +608,8 @@ async function captureFullPageScreenshot(tabId) {
         });
         await wait(CAPTURE_SETTLE_MS);
 
-        const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-        const image = await loadImage(dataUrl);
+        const tileDataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+        const image = await loadImage(tileDataUrl);
         const captureX = Number(actual?.x ?? x);
         const captureY = Number(actual?.y ?? y);
         const visibleWidth = Math.min(viewportWidth, Math.max(totalWidth - captureX, 1));
@@ -630,6 +630,13 @@ async function captureFullPageScreenshot(tabId) {
         );
       }
     }
+
+    // Temporary debugging path kept as a quick fallback if we need to validate
+    // the downstream API with a smaller single-viewport image again.
+    //
+    // await wait(CAPTURE_SETTLE_MS);
+    // const dataUrl = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    // const image = await loadImage(dataUrl);
 
     const dataUrl = canvas.toDataURL("image/png");
     const [, imageBase64 = ""] = dataUrl.split(",", 2);
@@ -709,6 +716,8 @@ async function performDetailedCheck(tabId, allowNow = false) {
     }
 
     const rememberedDecision = getUserSiteDecision(url);
+    const fullCheckAnalysis = payload.result.full_check_analysis || null;
+    const fullCheckAnalysisError = payload.result.full_check_analysis_error || null;
     const nextState = applyRememberedDecision({
       status: "ready",
       url,
@@ -721,6 +730,8 @@ async function performDetailedCheck(tabId, allowNow = false) {
         status: "complete",
         userConsented: true,
         screenshotCaptured: true,
+        analysis: fullCheckAnalysis,
+        analysisError: fullCheckAnalysisError,
         completedAt: new Date().toISOString(),
         updatedAt: Date.now()
       },

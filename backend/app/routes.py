@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import secrets
+import time
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -326,6 +327,28 @@ async def handle_scan(request: Request):
                 "scale": screenshot_payload["scale"],
             }
             result["artifacts"] = artifacts
+
+        if (
+            detail_level == "detailed"
+            and screenshot_payload
+            and service.realfake.enabled
+        ):
+            full_check_started = time.perf_counter()
+            try:
+                full_check_analysis = await asyncio.to_thread(
+                    service.analyze_full_check,
+                    url=source_url or request_url or url or "unknown",
+                    image_bytes=screenshot_payload["image_bytes"],
+                )
+                if full_check_analysis is not None:
+                    result["full_check_analysis"] = full_check_analysis
+            except Exception as exc:
+                result["full_check_analysis_error"] = {
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                }
+            finally:
+                timings["full_check_analysis_ms"] = (time.perf_counter() - full_check_started) * 1000.0
 
         if detail_level:
             result["detail_level"] = detail_level

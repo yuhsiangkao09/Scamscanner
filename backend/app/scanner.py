@@ -14,6 +14,7 @@ import numpy as np
 
 from .services.detector import PhishingDetector
 from .services.preprocessor import URLPreprocessor
+from .services.realfake import RealFakeService
 from .utils import compact_text, read_event_log_by_id, read_event_log_tail
 
 
@@ -31,6 +32,11 @@ class ScannerService:
             threshold=settings.threshold,
             with_domain=self.with_domain,
             device=settings.device,
+        )
+        self.realfake = RealFakeService(
+            enabled=settings.realfake_enabled,
+            api_base_url=settings.realfake_api_base_url,
+            timeout=settings.realfake_timeout,
         )
         self.history = deque(maxlen=settings.history_limit)
         self.history_lock = asyncio.Lock()
@@ -366,7 +372,16 @@ class ScannerService:
             "feedback_log_path": str(self.feedback_log_path),
             "feedback_html_dir": str(self.feedback_html_dir),
             "screenshot_dir": str(self.screenshot_dir),
+            "realfake_enabled": self.realfake.enabled,
+            "realfake_api_base_url": self.realfake.api_base_url,
+            "realfake_timeout": self.realfake.timeout,
         }
+
+    def analyze_full_check(self, *, url: str, image_bytes: bytes):
+        return self.realfake.analyze(
+            url=url,
+            image_bytes=image_bytes,
+        )
 
     def save_feedback_html(self, url, html_content, prefix="feedback"):
         host = urlparse(url).netloc.lower() or "report"

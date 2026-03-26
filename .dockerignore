@@ -1,0 +1,12 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.py[cod]
+
+backend/.env
+logs
+data
+firefox_extension
+
+README.md

@@ -255,9 +255,113 @@ function ensureUi() {
         cursor: default;
       }
       .dialog-status {
-        margin-top: 12px;
+        margin-top: 14px;
         color: var(--ps-muted);
         font-size: 12px;
+      }
+      .dialog-status.busy {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(21, 94, 117, 0.10);
+        border: 1px solid rgba(21, 94, 117, 0.22);
+        color: var(--ps-accent);
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .dialog-status.busy::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: currentColor;
+        animation: surfphish-pulse 1s ease-in-out infinite;
+      }
+      .result-dialog {
+        width: min(720px, 100%);
+        max-height: min(78vh, 860px);
+        overflow: auto;
+      }
+      .result-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .result-chip {
+        border: 1px solid var(--ps-line);
+        border-radius: 14px;
+        background: var(--ps-soft);
+        padding: 12px;
+      }
+      .result-chip-label {
+        display: block;
+        color: var(--ps-muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .result-chip-value {
+        display: block;
+        margin-top: 6px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .result-section {
+        margin-top: 16px;
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid var(--ps-line);
+        background: var(--ps-soft);
+      }
+      .result-section h3 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .result-section p {
+        margin: 8px 0 0;
+        font-size: 14px;
+        line-height: 1.65;
+        color: var(--ps-ink);
+      }
+      .signal-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .signal-card {
+        border-radius: 14px;
+        border: 1px solid var(--ps-line);
+        background: var(--ps-surface);
+        padding: 12px;
+      }
+      .signal-card h4 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .signal-card p {
+        margin: 8px 0 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--ps-muted);
+      }
+      .result-error {
+        margin-top: 16px;
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(185, 28, 28, 0.28);
+        background: rgba(185, 28, 28, 0.10);
+        color: var(--ps-ink);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      @keyframes surfphish-pulse {
+        0% { transform: scale(0.8); opacity: 0.45; }
+        50% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(0.8); opacity: 0.45; }
       }
       @media (max-width: 720px) {
         .banner-shell {
@@ -319,6 +423,44 @@ function ensureUi() {
         <p class="dialog-status" id="consentStatus"></p>
       </article>
     </section>
+    <section class="overlay hidden" id="resultOverlay" aria-live="polite">
+      <article class="dialog result-dialog">
+        <div class="row">
+          <div>
+            <h2 id="resultTitle">Full Check Result</h2>
+            <p id="resultIntro">SurfPhish has finished the full check and returned a visual analysis.</p>
+          </div>
+          <button class="close" id="closeResultButton" type="button" aria-label="Hide">&times;</button>
+        </div>
+        <div class="result-grid" id="resultSummaryGrid">
+          <div class="result-chip">
+            <span class="result-chip-label" id="resultRiskLabel">Risk</span>
+            <span class="result-chip-value" id="resultRiskValue">LOW</span>
+          </div>
+          <div class="result-chip">
+            <span class="result-chip-label" id="resultConfidenceLabel">Confidence</span>
+            <span class="result-chip-value" id="resultConfidenceValue">0%</span>
+          </div>
+        </div>
+        <section class="result-section" id="resultSummarySection">
+          <h3 id="resultSummaryHeading">Summary</h3>
+          <p id="resultSummaryText"></p>
+        </section>
+        <section class="result-section" id="resultActionSection">
+          <h3 id="resultActionHeading">Recommended Action</h3>
+          <p id="resultActionText"></p>
+        </section>
+        <section class="result-section" id="resultSignalsSection">
+          <h3 id="resultSignalsHeading">Why SurfPhish thinks so</h3>
+          <div class="signal-list" id="resultSignalsList"></div>
+        </section>
+        <div class="result-error hidden" id="resultErrorText"></div>
+        <div class="dialog-actions">
+          <button class="dialog-button secondary" id="leaveResultActionButton" type="button">Leave this site</button>
+          <button class="dialog-button primary" id="closeResultActionButton" type="button">Close</button>
+        </div>
+      </article>
+    </section>
   `;
 
   shadow.getElementById("closeButton").addEventListener("click", () => {
@@ -329,6 +471,19 @@ function ensureUi() {
   });
   shadow.getElementById("cancelConsentButton").addEventListener("click", () => {
     hideConsentOverlay();
+  });
+  shadow.getElementById("closeResultButton").addEventListener("click", () => {
+    hideFullCheckResults();
+  });
+  shadow.getElementById("leaveResultActionButton").addEventListener("click", async () => {
+    try {
+      await api.runtime.sendMessage({ type: "surfphish:leave-high-risk-page" });
+    } catch (error) {
+      // Ignore navigation errors here; the user can still close the dialog.
+    }
+  });
+  shadow.getElementById("closeResultActionButton").addEventListener("click", () => {
+    hideFullCheckResults();
   });
   shadow.getElementById("allowConsentButton").addEventListener("click", () => {
     requestDetailedCheck(true);
@@ -347,6 +502,15 @@ function applyStaticText() {
   shadow.getElementById("consentBody").textContent = t(lang, "consentBody");
   shadow.getElementById("allowConsentButton").textContent = t(lang, "consentAllow");
   shadow.getElementById("cancelConsentButton").textContent = t(lang, "consentCancel");
+  shadow.getElementById("resultTitle").textContent = t(lang, "fullCheckResultTitle");
+  shadow.getElementById("resultIntro").textContent = t(lang, "fullCheckResultIntro");
+  shadow.getElementById("resultRiskLabel").textContent = t(lang, "fullCheckResultRisk");
+  shadow.getElementById("resultConfidenceLabel").textContent = t(lang, "fullCheckResultConfidence");
+  shadow.getElementById("resultSummaryHeading").textContent = t(lang, "fullCheckResultSummary");
+  shadow.getElementById("resultActionHeading").textContent = t(lang, "fullCheckResultAction");
+  shadow.getElementById("resultSignalsHeading").textContent = t(lang, "fullCheckResultSignals");
+  shadow.getElementById("leaveResultActionButton").textContent = t(lang, "fullCheckResultLeave");
+  shadow.getElementById("closeResultActionButton").textContent = t(lang, "fullCheckResultClose");
 }
 
 function showBanner() {
@@ -365,12 +529,79 @@ function showConsentOverlay(message = "") {
 function hideConsentOverlay() {
   shadow.getElementById("consentOverlay").classList.add("hidden");
   shadow.getElementById("consentStatus").textContent = "";
+  shadow.getElementById("consentStatus").classList.remove("busy");
   shadow.getElementById("allowConsentButton").disabled = false;
   shadow.getElementById("cancelConsentButton").disabled = false;
 }
 
+function showFullCheckResults(analysis, errorMessage = "") {
+  const lang = currentLanguage();
+  const errorText = shadow.getElementById("resultErrorText");
+  const summaryGrid = shadow.getElementById("resultSummaryGrid");
+  const summarySection = shadow.getElementById("resultSummarySection");
+  const actionSection = shadow.getElementById("resultActionSection");
+  const signalsSection = shadow.getElementById("resultSignalsSection");
+  const signalsList = shadow.getElementById("resultSignalsList");
+
+  signalsList.innerHTML = "";
+  errorText.textContent = "";
+  errorText.classList.add("hidden");
+
+  if (!analysis) {
+    summaryGrid.classList.add("hidden");
+    summarySection.classList.add("hidden");
+    actionSection.classList.add("hidden");
+    signalsSection.classList.add("hidden");
+    errorText.textContent = errorMessage || t(lang, "fullCheckResultUnavailable");
+    errorText.classList.remove("hidden");
+    shadow.getElementById("resultOverlay").classList.remove("hidden");
+    return;
+  }
+
+  summaryGrid.classList.remove("hidden");
+  summarySection.classList.remove("hidden");
+  actionSection.classList.remove("hidden");
+  signalsSection.classList.remove("hidden");
+
+  shadow.getElementById("resultRiskValue").textContent = riskLabel(
+    lang,
+    String(analysis.risk_level || "UNKNOWN").toUpperCase()
+  );
+  shadow.getElementById("resultConfidenceValue").textContent = `${Math.round(Number(analysis.confidence || 0) * 100)}%`;
+  shadow.getElementById("resultSummaryText").textContent = analysis.summary || t(lang, "fullCheckResultUnavailable");
+  shadow.getElementById("resultActionText").textContent = analysis.action || t(lang, "fullCheckResultUnavailable");
+
+  for (const signal of Array.isArray(analysis.signals) ? analysis.signals : []) {
+    const card = document.createElement("article");
+    card.className = "signal-card";
+
+    const heading = document.createElement("h4");
+    heading.textContent = signal?.title || t(lang, "fullCheckResultSignalFallback");
+    card.appendChild(heading);
+
+    const detail = document.createElement("p");
+    detail.textContent = signal?.detail || "";
+    card.appendChild(detail);
+
+    signalsList.appendChild(card);
+  }
+
+  if (!signalsList.children.length) {
+    const detail = document.createElement("p");
+    detail.textContent = t(lang, "fullCheckResultUnavailable");
+    signalsList.appendChild(detail);
+  }
+
+  shadow.getElementById("resultOverlay").classList.remove("hidden");
+}
+
+function hideFullCheckResults() {
+  shadow.getElementById("resultOverlay").classList.add("hidden");
+}
+
 function setConsentBusy(isBusy, message = "") {
   shadow.getElementById("consentStatus").textContent = message;
+  shadow.getElementById("consentStatus").classList.toggle("busy", Boolean(isBusy && message));
   shadow.getElementById("allowConsentButton").disabled = isBusy;
   shadow.getElementById("cancelConsentButton").disabled = isBusy;
 }
@@ -408,6 +639,10 @@ async function requestDetailedCheck(allowNow) {
       blockHighRiskInterstitial: false,
       uiLanguage: currentDisplayOptions.uiLanguage
     });
+    showFullCheckResults(
+      response.state?.detailedCheck?.analysis || null,
+      response.state?.detailedCheck?.analysisError?.message || ""
+    );
   } catch (error) {
     setConsentBusy(false, error.message || t(lang, "consentFailed"));
   }
@@ -494,23 +729,35 @@ function renderState(payload) {
   if (!payload?.showBanner || !currentState) {
     hideBanner();
     hideConsentOverlay();
+    hideFullCheckResults();
     return;
   }
 
   if (currentState.status === "error") {
-    renderError(currentState);
+    hideBanner();
+    hideConsentOverlay();
+    hideFullCheckResults();
     return;
   }
 
   if (currentState.status !== "ready") {
     hideBanner();
     hideConsentOverlay();
+    hideFullCheckResults();
     return;
   }
 
   if (currentState.status === "whitelisted") {
     hideBanner();
     hideConsentOverlay();
+    hideFullCheckResults();
+    return;
+  }
+
+  if (String(currentState.summary?.riskLevel || "").toUpperCase() === "LOW") {
+    hideBanner();
+    hideConsentOverlay();
+    hideFullCheckResults();
     return;
   }
 
