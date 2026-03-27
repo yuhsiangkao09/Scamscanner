@@ -20,7 +20,7 @@ const MAX_USER_SITE_DECISIONS = 500;
 const MAX_STITCHED_PIXELS = 16_000_000;
 const MAX_FULLPAGE_CAPTURE_SCROLLS = 6;
 const CAPTURE_SETTLE_MS = 420;
-const LOOKUP_API_URL = "https://ynhy80qtt6.execute-api.us-west-2.amazonaws.com/prod/lookup";
+const LOOKUP_API_URL = "https://m6onjqcbg9.execute-api.us-west-2.amazonaws.com/prod/lookup";
 const LOOKUP_TIMEOUT_MS = 8000;
 const MAX_LOOKUP_ITEMS = 10;
 
@@ -223,7 +223,7 @@ async function submitFeedbackToBackend(event) {
         "Timed out while collecting page DOM for feedback."
       );
     } catch (error) {
-      console.warn("[SurfPhish] Failed to collect page DOM for feedback.", error);
+      console.warn("[SurfFish] Failed to collect page DOM for feedback.", error);
     }
   }
   const response = await fetch(`${settings.apiBaseUrl}/api/feedback`, {
@@ -690,7 +690,7 @@ async function syncProtectionStateAfterSettingsChange() {
 }
 
 async function collectPagePayload(tabId, url, options = {}) {
-  console.debug("[SurfPhish] Requesting DOM payload from tab.", { tabId, url });
+  console.debug("[SurfFish] Requesting DOM payload from tab.", { tabId, url });
   return withTimeout(
     api.tabs.sendMessage(tabId, {
       type: "surfphish:collect-page-payload",
@@ -957,7 +957,7 @@ async function performDetailedCheck(tabId, allowNow = false) {
   }
 
   if (!isProtectionEnabled()) {
-    return { ok: false, error: "SurfPhish protection is not enabled for this browser session." };
+    return { ok: false, error: "SurfFish protection is not enabled for this browser session." };
   }
 
   if (!allowNow) {
@@ -1040,7 +1040,7 @@ async function performDetailedCheck(tabId, allowNow = false) {
     return { ok: true, state: nextState };
   } catch (error) {
     const errorMessage = isMissingActiveTabPermissionError(error)
-      ? "Firefox did not grant tab capture permission for this page. Please reopen the SurfPhish popup on this tab and try Full Check again."
+      ? "Firefox did not grant tab capture permission for this page. Please reopen the SurfFish popup on this tab and try Full Check again."
       : error.message;
     const failedState = {
       ...baseState,
@@ -1064,7 +1064,7 @@ async function performEmailCheck(tabId, allowNow = false, options = {}) {
     return { ok: false, error: "This tab is not an open Gmail message." };
   }
   if (!manual && !isProtectionEnabled()) {
-    return { ok: false, error: "SurfPhish protection is not enabled for this browser session." };
+    return { ok: false, error: "SurfFish protection is not enabled for this browser session." };
   }
   if (!allowNow) {
     return { ok: false, requiresConsent: true };
@@ -1208,7 +1208,7 @@ async function scanTab(tabId, url, options = {}) {
   }
 
   try {
-    console.debug("[SurfPhish] Sending page payload to scanner API.", {
+    console.debug("[SurfFish] Sending page payload to scanner API.", {
       tabId,
       url,
       sourceUrl: pagePayload.sourceUrl,
@@ -1223,7 +1223,7 @@ async function scanTab(tabId, url, options = {}) {
       })
     ]);
     payload = await response.json();
-    console.debug("[SurfPhish] Scanner API responded.", {
+    console.debug("[SurfFish] Scanner API responded.", {
       tabId,
       url,
       ok: response.ok,
@@ -1361,7 +1361,7 @@ api.storage.onChanged.addListener((changes, areaName) => {
   }
   if (changes.protectionEnabled || changes.autoScan) {
     syncProtectionStateAfterSettingsChange().catch((error) => {
-      console.warn("[SurfPhish] Failed to sync protection state after settings change.", error);
+      console.warn("[SurfFish] Failed to sync protection state after settings change.", error);
     });
   }
 });
@@ -1496,7 +1496,7 @@ api.runtime.onMessage.addListener((message, sender) => {
       try {
         await submitFeedbackToBackend(event);
       } catch (error) {
-        console.warn("[SurfPhish] Failed to submit false-positive feedback.", error);
+        console.warn("[SurfFish] Failed to submit false-positive feedback.", error);
       }
       const storedDecision = await persistUserSiteDecision(state.url, "not_phishing", message.source || "unknown");
       tabBypasses.set(tabId, {
@@ -1543,7 +1543,7 @@ api.runtime.onMessage.addListener((message, sender) => {
       try {
         await submitFeedbackToBackend(event);
       } catch (error) {
-        console.warn("[SurfPhish] Failed to submit site report.", error);
+        console.warn("[SurfFish] Failed to submit site report.", error);
       }
       const storedDecision = await persistUserSiteDecision(state.url, "phishing", message.source || "unknown");
       const nextState = {

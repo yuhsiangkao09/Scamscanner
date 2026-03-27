@@ -159,7 +159,7 @@ def get_settings() -> AppSettings:
         collector_headless=_as_bool("APP_COLLECTOR_HEADLESS", True),
         realfake_enabled=_as_bool("APP_REALFAKE_ENABLED", False),
         realfake_api_base_url=os.getenv("APP_REALFAKE_API_BASE_URL", "").strip().rstrip("/"),
-        realfake_timeout=_as_int("APP_REALFAKE_TIMEOUT", 45),
+        realfake_timeout=_as_int("APP_REALFAKE_TIMEOUT", 90),
         admin_password=admin_password,
         admin_password_generated=generated_admin_password,
         reload=_as_bool("APP_RELOAD", False),

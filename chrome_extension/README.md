@@ -1,10 +1,10 @@
-# SurfPhish Firefox Extension
+# SurfFish Chrome Extension
 
 This folder contains a Firefox WebExtension that can be loaded temporarily for local testing.
 
 It does three things:
 
-- Automatically sends the current page URL and DOM snapshot to the local SurfPhish backend when an HTTP or HTTPS page is opened
+- Automatically sends the current page URL and DOM snapshot to the local SurfFish backend when an HTTP or HTTPS page is opened
 - Shows a `LOW`, `MED`, `HI`, or `ERR` badge on the browser toolbar button
 - Displays an in-page risk banner and a more detailed result view in the popup
 - Lets the user request a detailed check that uploads a stitched full-page screenshot after consent

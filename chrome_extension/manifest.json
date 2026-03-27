@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SurfPhish Chrome",
+  "name": "SurfFish Chrome",
   "version": "0.1.0",
-  "description": "Scan the current page with the SurfPhish backend and surface website risk details in Chrome.",
+  "description": "Scan the current page with the SurfFish backend and surface website risk details in Chrome.",
   "permissions": [
     "activeTab",
     "tabs",
@@ -18,7 +18,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "SurfPhish",
+    "default_title": "SurfFish",
     "default_popup": "popup.html",
     "default_icon": {
       "48": "icons/shield.svg",

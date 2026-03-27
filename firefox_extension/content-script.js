@@ -438,14 +438,32 @@ function ensureUi() {
         border-radius: 14px;
         border: 1px solid var(--ps-line);
         background: var(--ps-surface);
-        padding: 12px;
+        padding: 0;
+        overflow: hidden;
       }
-      .signal-card h4 {
-        margin: 0;
+      .signal-card summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 12px 14px;
         font-size: 14px;
+        font-weight: 700;
+      }
+      .signal-card summary::-webkit-details-marker {
+        display: none;
+      }
+      .signal-card summary::after {
+        content: "+";
+        float: right;
+        color: var(--ps-muted);
+        font-size: 18px;
+        line-height: 1;
+      }
+      .signal-card[open] summary::after {
+        content: "-";
       }
       .signal-card p {
-        margin: 8px 0 0;
+        margin: 0;
+        padding: 0 14px 12px;
         font-size: 13px;
         line-height: 1.6;
         color: var(--ps-muted);
@@ -499,7 +517,7 @@ function ensureUi() {
           <button class="close" id="closeButton" type="button" aria-label="Hide">&times;</button>
         </div>
         <h1 class="title" id="title">This page looks suspicious</h1>
-        <p class="subtitle" id="subtitle">SurfPhish detected signals that deserve a closer look.</p>
+        <p class="subtitle" id="subtitle">SurfFish detected signals that deserve a closer look.</p>
         <div class="metrics">
           <div class="metric">
             <span class="metric-label" id="scoreLabelText">Phishing Score</span>
@@ -520,14 +538,14 @@ function ensureUi() {
         </div>
         <div class="action-stack">
           <button class="primary-action" id="detailButton" type="button">Full Check</button>
-          <p class="helper" id="detailHelper">Full check will ask for consent before sending a full-page screenshot to SurfPhish.</p>
+          <p class="helper" id="detailHelper">Full check will ask for consent before sending a full-page screenshot to SurfFish.</p>
         </div>
       </section>
     </div>
     <div class="gmail-shell hidden" id="gmailShell">
       <section class="gmail-panel">
         <span class="gmail-label" id="gmailLabel">Gmail Email Check</span>
-        <h2 class="gmail-title" id="gmailTitle">Check the open email with SurfPhish</h2>
+        <h2 class="gmail-title" id="gmailTitle">Check the open email with SurfFish</h2>
         <p class="gmail-helper" id="gmailHelper">Analyze only the email currently open in Gmail, including the visible message view.</p>
         <button class="primary-action gmail-check-button" id="gmailCheckButton" type="button">Check this email</button>
       </section>
@@ -535,7 +553,7 @@ function ensureUi() {
     <section class="overlay hidden" id="consentOverlay" aria-live="assertive">
       <article class="dialog">
         <h2 id="consentTitle">Full Check</h2>
-        <p id="consentBody">To continue, SurfPhish needs your permission to send this page's full data, including DOM and a full-page screenshot, for full inspection.</p>
+        <p id="consentBody">To continue, SurfFish needs your permission to send this page's full data, including DOM and a full-page screenshot, for full inspection.</p>
         <div class="dialog-actions">
           <button class="dialog-button success" id="allowConsentButton" type="button">Allow</button>
           <button class="dialog-button danger" id="cancelConsentButton" type="button">Cancel</button>
@@ -548,7 +566,7 @@ function ensureUi() {
         <div class="row">
           <div>
             <h2 id="resultTitle">Full Check Result</h2>
-            <p id="resultIntro">SurfPhish has finished the full check and returned a visual analysis.</p>
+            <p id="resultIntro">SurfFish has finished the full check and returned a visual analysis.</p>
           </div>
           <button class="close" id="closeResultButton" type="button" aria-label="Hide">&times;</button>
         </div>
@@ -571,7 +589,7 @@ function ensureUi() {
           <p id="resultActionText"></p>
         </section>
         <section class="result-section" id="resultSignalsSection">
-          <h3 id="resultSignalsHeading">Why SurfPhish thinks so</h3>
+          <h3 id="resultSignalsHeading">Why SurfFish thinks so</h3>
           <div class="signal-list" id="resultSignalsList"></div>
         </section>
         <div class="result-error hidden" id="resultErrorText"></div>
@@ -743,15 +761,15 @@ function showFullCheckResults(analysis, errorMessage = "", options = {}) {
   shadow.getElementById("resultActionText").textContent = analysis.action || t(lang, "fullCheckResultUnavailable");
 
   for (const signal of Array.isArray(analysis.signals) ? analysis.signals : []) {
-    const card = document.createElement("article");
+    const card = document.createElement("details");
     card.className = "signal-card";
 
-    const heading = document.createElement("h4");
+    const heading = document.createElement("summary");
     heading.textContent = signal?.title || t(lang, "fullCheckResultSignalFallback");
     card.appendChild(heading);
 
     const detail = document.createElement("p");
-    detail.textContent = signal?.detail || "";
+    detail.textContent = signal?.detail || t(lang, "fullCheckResultUnavailable");
     card.appendChild(detail);
 
     signalsList.appendChild(card);

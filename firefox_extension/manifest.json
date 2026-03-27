@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SurfPhish",
+  "name": "SurfFish",
   "version": "0.1.0",
-  "description": "Scan the current page with the local SurfPhish backend and surface website risk details in Firefox.",
+  "description": "Scan the current page with the local SurfFish backend and surface website risk details in Firefox.",
   "permissions": [
     "activeTab",
     "tabs",
@@ -21,7 +21,7 @@
     ]
   },
   "action": {
-    "default_title": "SurfPhish",
+    "default_title": "SurfFish",
     "default_popup": "popup.html",
     "default_icon": {
       "48": "icons/shield.svg",
