@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from analyze import call_bedrock, parse_vlm_response, take_screenshot
 from email_prompt import EMAIL_SYSTEM_PROMPT, build_email_user_prompt
+from image_prompt import IMAGE_SYSTEM_PROMPT, build_image_user_prompt
 from generate_prompt import (
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -66,6 +67,27 @@ class ErrorResponse(BaseModel):
     error: str
     stage: str
     detail: str | None = None
+
+
+class AnalyzeImageRequest(BaseModel):
+    screenshot: str  # base64-encoded image (required)
+    screenshot_format: str | None = None
+    context: str | None = None  # optional user-provided context
+
+
+class ImageCollectedEvidence(BaseModel):
+    source_type: str = "screenshot_only"
+    context: str | None = None
+
+
+class AnalyzeImageResponse(BaseModel):
+    is_scam: bool
+    risk_level: str
+    confidence: float
+    summary: str
+    signals: list[Signal]
+    action: str
+    collected_evidence: ImageCollectedEvidence
 
 
 class EmailLink(BaseModel):
@@ -232,4 +254,50 @@ def analyze_email(req: AnalyzeEmailRequest) -> AnalyzeEmailResponse:
         "attachments": req.attachments,
         "warnings": req.warnings,
     }
+    return result
+
+
+@app.post("/analyze-image", responses={500: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
+def analyze_image(req: AnalyzeImageRequest) -> AnalyzeImageResponse:
+    # 1. Decode screenshot
+    try:
+        image_bytes = base64.b64decode(req.screenshot)
+        image_format = str(req.screenshot_format or "png").strip().lower()
+    except Exception as e:
+        logger.error(f"Image decode failed: {e}")
+        raise HTTPException(status_code=502, detail={
+            "error": "圖片解碼失敗",
+            "stage": "screenshot",
+            "detail": str(e),
+        })
+
+    # 2. Call VLM
+    user_prompt = build_image_user_prompt(req.context)
+    try:
+        raw = call_bedrock(IMAGE_SYSTEM_PROMPT, user_prompt, image_bytes, image_format=image_format)
+    except Exception as e:
+        logger.error(f"Bedrock call failed for image analysis: {e}")
+        raise HTTPException(status_code=502, detail={
+            "error": "模型呼叫失敗",
+            "stage": "bedrock",
+            "detail": str(e),
+        })
+
+    # 3. Parse VLM response
+    try:
+        result = parse_vlm_response(raw)
+    except json.JSONDecodeError:
+        logger.error(f"VLM returned invalid JSON for image analysis: {raw[:200]}")
+        raise HTTPException(status_code=502, detail={
+            "error": "模型回傳格式錯誤",
+            "stage": "parse",
+            "detail": raw[:500],
+        })
+
+    # 4. Attach collected evidence
+    result["collected_evidence"] = {
+        "source_type": "screenshot_only",
+        "context": req.context,
+    }
+
     return result
